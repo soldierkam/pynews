@@ -7,15 +7,28 @@ class IncDict(object):
 
     def __init__(self):
         self.__d = {}
+        self.__keys = {}
 
     def inc(self, elem, step = 1):
         if elem in self.__d:
             self.__d[elem] += step
+            return (self.__keys[elem], True)
         else:
             self.__d[elem] = 1
+            self.__keys[elem]=elem
+            return (elem, False)
 
     def remove(self, elem):
         del self.__d[elem]
+
+    def items(self):
+        return self.__d.items()
+
+    def __iter__(self):
+        return self.__d.__iter__();
+
+    def __unicode__(self):
+        return unicode(self.__d)
 
     def __str__(self):
         return str(self.__d)
