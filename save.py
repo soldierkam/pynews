@@ -15,16 +15,31 @@ from datetime import timedelta
 
 class TweetIterator(object):
 
-    def __init__(self, file):
-        self.__file = file
+    def __init__(self, files):
+        self.__idx = 0
+        self.__file = files[self.__idx]
+        self.__all = files
+
+    def __isLastFile(self):
+        return self.__idx == len(self.__all) - 1
+
+    def __getNextFile(self):
+        self.__idx += 1
+        return self.__all[self.__idx]
 
     def __iter__(self):
         return self
 
     def next(self):
         buf = self.__file.read(4)
-        if not buf:
-            raise StopIteration()
+        if not buf :
+            if self.__isLastFile():
+                raise StopIteration()
+            else:
+                self.__file.close()
+                self.__file = self.__getNextFile()
+                #print "Open next " + str(self.__file)
+                buf = self.__file.read(4)
         size = struct.unpack('i', buf)[0]
         data = self.__file.read(size)
         tweet = pickle.loads(data)
@@ -63,12 +78,14 @@ class Manager:
             print u"Close file " + filename + u" (" + unicode(c) + u")"
             f_out.close()
 
-    def restore(self, filename):
-        f = self.filenameRead(filename)
-        print u"Open: " + f
-        f_in = gzip.open(f, "rb")
+    def restore(self, filename, lastOnly=False):
+        filesNames = self.filenameRead(filename)
+        print u"Open: " + unicode(map(str, filesNames))
+        f_in=[]
+        filesNames = [filesNames[-1]] if lastOnly else filesNames
+        for f in filesNames:
+            f_in.append(gzip.open(f, "rb"))
         return TweetIterator(f_in)
-
 
     def filenameWrite(self, dir):
         if not path.exists(dir):
@@ -78,18 +95,17 @@ class Manager:
 
     def filenameRead(self, filename):
         if path.isfile(filename):
-            return filename
+            return [filename]
 
-        newest = None
-        time = None
+        result = []
         for dirname, dirnames, filenames in os.walk(filename):
             for filename in filenames:
                 if filename.endswith(u".tweets"):
                     file = path.join(dirname, filename)
-                    if time == None or time < os.path.getmtime(file):
-                        time = os.path.getmtime(file)
-                        newest = file
-        return newest
+                    result.append(file)
+        if not result:
+            raise Exception("No file in " + filename)
+        return sorted(result, key=os.path.getmtime)
 
 if __name__ == "__main__":
     m = Manager()

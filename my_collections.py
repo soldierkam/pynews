@@ -27,11 +27,8 @@ class IncDict(object):
     def __iter__(self):
         return self.__d.__iter__();
 
-    def __unicode__(self):
-        return unicode(self.__d)
-
     def __str__(self):
-        return str(self.__d)
+        return "".join(map(str, self.__d))
 
 
 class LimitedCollection(dict):
