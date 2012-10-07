@@ -1,6 +1,4 @@
 # -*- coding: utf-8 *-*
-from fileinput import filename
-
 __author__ = 'soldier'
 
 import sys
@@ -9,26 +7,70 @@ import struct
 import gzip
 import pickle
 import os
+import re
 from os import path
 from datetime import datetime
 from datetime import timedelta
+from logger import logger
+
+filenamePattern = re.compile(r"s=([^,]+),c=([^,]+).tweets")
 
 class TweetIterator(object):
 
     def __init__(self, files):
-        self.__idx = 0
-        self.__file = files[self.__idx]
+        self.__fileIdx = 0
+        self.__tweetIdx = 0
+        self.__tweetInFileCounter = 0
+        self.__file = files[self.__fileIdx]
         self.__all = files
+        self.__count = 0
+        for file in files:
+            val = self.__tweetsInFile(file)
+            if val:
+                self.__count += val
 
     def __isLastFile(self):
-        return self.__idx == len(self.__all) - 1
+        return self.__fileIdx == len(self.__all) - 1
 
     def __getNextFile(self):
-        self.__idx += 1
-        return self.__all[self.__idx]
+        gzFile = self.__all[self.__fileIdx]
+        gzFile.close()
+        if not self.__getFilenameMatcher(gzFile):
+            self.__rename(gzFile, self.__tweetInFileCounter)
+        self.__fileIdx += 1
+        self.__tweetInFileCounter = 0
+        return self.__all[self.__fileIdx]
+
+    def __rename(self, gzFile, count):
+        filename = gzFile.filename
+        newFilename = os.path.join(os.path.dirname(filename), "s=" + os.path.basename(filename).replace(".tweets", "") + ",c=" + str(count) + ".tweets")
+        logger.info("Rename " + filename + " to " + newFilename)
+        os.rename(filename, newFilename)
 
     def __iter__(self):
         return self
+
+    def position(self):
+        return self.__tweetIdx
+
+    def count(self):
+        return self.__count
+
+    def currentFile(self):
+        return self.__fileIdx + 1
+
+    def filesCount(self):
+        return len(self.__all)
+
+    def __tweetsInFile(self, file):
+        m = self.__getFilenameMatcher(file)
+        if m:
+            return m.group(2)
+        else:
+            return None
+
+    def __getFilenameMatcher(self, file):
+        return filenamePattern.match(file.name.replace(".gz", ""))
 
     def next(self):
         buf = self.__file.read(4)
@@ -36,13 +78,14 @@ class TweetIterator(object):
             if self.__isLastFile():
                 raise StopIteration()
             else:
-                self.__file.close()
                 self.__file = self.__getNextFile()
                 #print "Open next " + str(self.__file)
                 buf = self.__file.read(4)
         size = struct.unpack('i', buf)[0]
         data = self.__file.read(size)
         tweet = pickle.loads(data)
+        self.__tweetIdx += 1
+        self.__tweetInFileCounter += 1
         return tweet
 
 class Manager:
@@ -54,7 +97,8 @@ class Manager:
         start = datetime.now()
         dayDelta = timedelta(hours=5)
         i = 0
-        c = 0
+        tweetInStreamCounter = 0
+        tweetInFileCounter = 0
         try:
             stream = tweetstream.SampleStream(u'soldierkam', os.environ["PASSWORD"])
             for s in stream:
@@ -66,17 +110,25 @@ class Manager:
                     print "."
                     delta = datetime.now() - start
                     if delta > dayDelta:
-                        print u"Close file " + filename + u" (" + unicode(c) + u")"
+                        print u"Close file " + filename + u" (" + unicode(tweetInStreamCounter) + u")"
                         f_out.close()
+                        self.__renameFile(filename, tweetInFileCounter)
                         filename = self.filenameWrite(dir)
                         f_out = gzip.open(filename, 'wb')
                         start = datetime.now()
+                        tweetInFileCounter = 0
                 else:
                     i += 1
-                c += 1
+                tweetInStreamCounter += 1
+                tweetInFileCounter += 1
         except KeyboardInterrupt:
-            print u"Close file " + filename + u" (" + unicode(c) + u")"
+            print u"Close file " + filename + u" (" + unicode(tweetInStreamCounter) + u")"
             f_out.close()
+
+    def __renameFile(self, filename, start, tweetsCount):
+        dir = os.path.dirname(filename)
+        newFilename = os.path.join(dir, "s=" + str(start) + ",c=" + tweetsCount + ",e=" + str(datetime.now()) + ".tweets")
+        os.rename(filename, newFilename)
 
     def restore(self, filename, lastOnly=False):
         filesNames = self.filenameRead(filename)
