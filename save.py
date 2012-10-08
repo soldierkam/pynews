@@ -170,7 +170,7 @@ class Manager:
         filename = self.filenameWrite(dir)
         f_out = gzip.open(filename, 'wb')
         start = datetime.now()
-        dayDelta = timedelta(seconds=20)#(hours=5)
+        dayDelta = timedelta(hours=5)
         i = 0
         tweetInStreamCounter = 0
         tweetInFileCounter = 0
