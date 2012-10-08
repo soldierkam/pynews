@@ -170,7 +170,7 @@ class Manager:
         filename = self.filenameWrite(dir)
         f_out = gzip.open(filename, 'wb')
         start = datetime.now()
-        dayDelta = timedelta(hours=5)
+        dayDelta = timedelta(seconds=20)#(hours=5)
         i = 0
         tweetInStreamCounter = 0
         tweetInFileCounter = 0
@@ -188,7 +188,7 @@ class Manager:
                     if delta > dayDelta:
                         print u"Close file " + filename + u" (" + unicode(tweetInStreamCounter) + u")"
                         f_out.close()
-                        self.__renameFile(filename, tweetInFileCounter)
+                        self.__renameFile(filename, start, tweetInFileCounter)
                         filename = self.filenameWrite(dir)
                         f_out = gzip.open(filename, 'wb')
                         start = datetime.now()
@@ -211,7 +211,7 @@ class Manager:
 
     def __renameFile(self, filename, start, tweetsCount):
         dir = os.path.dirname(filename)
-        newFilename = os.path.join(dir, "s=" + str(start) + ",c=" + tweetsCount + ",e=" + str(datetime.now()) + ".tweets")
+        newFilename = os.path.join(dir, "s=" + str(start) + ",c=" + str(tweetsCount) + ",e=" + str(datetime.now()) + ".tweets")
         os.rename(filename, newFilename)
 
     def restore(self, filename, lastOnly=False):
