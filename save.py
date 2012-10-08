@@ -12,6 +12,9 @@ from os import path
 from datetime import datetime
 from datetime import timedelta
 from logger import logger
+from Queue import Queue, Full, Empty
+from threading import Thread, Event
+from tools import RateMonitor
 
 filenamePattern = re.compile(r"s=([^,]+),c=([^,]+).tweets")
 
@@ -88,6 +91,78 @@ class TweetIterator(object):
         self.__tweetInFileCounter += 1
         return tweet
 
+class QueueIterator():
+
+    def __init__(self, q, wrapper, rateMon):
+        self.__q = q
+        self.__wrapper = wrapper
+        self.__monitor = rateMon
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        while True:
+            try:
+                o = self.__q.get(timeout=5)
+                self.__monitor.hit()
+                return o
+            except Empty:
+                self.__wrapper.reset()
+
+class StreamWrapperHelper(Thread):
+
+    def __init__(self, queue):
+        Thread.__init__(self)
+        self.__stop = Event()
+        self.__queue = queue
+        self.__full = Event()
+        self.start()
+
+    def run(self):
+        while True:
+            if self.__stop.isSet():
+                return
+            stream = tweetstream.SampleStream(u'soldierkam', os.environ["PASSWORD"])
+            for s in stream:
+                try:
+                    if self.__stop.isSet():
+                        stream.close()
+                        return
+                    self.__queue.put(s, block=False)
+                    self.__full.clear()
+                except Full:
+                    if not self.__full.isSet():
+                        logger.warn("Queue is full!!")
+                        self.__full.set()
+
+    def close(self):
+        self.__stop.set()
+
+class StreamWrapper:
+
+    def __init__(self):
+        self.__rateMon = RateMonitor()
+        self.__queue = Queue(maxsize=300)
+        self.__helper = StreamWrapperHelper(self.__queue)
+
+    def __iter__(self):
+        return QueueIterator(self.__queue, self, self.__rateMon)
+
+    def reset(self):
+        logger.info("Reset stream wrapper")
+        self.__helper.close()
+        self.__helper = StreamWrapperHelper(self.__queue)
+
+    def close(self):
+        self.__helper.close()
+
+    def getCurrentRate(self):
+        return self.__rateMon.value()
+
+    def getAvgRate(self):
+        return self.__rateMon.avg()
+
 class Manager:
 
     def store(self, dir):
@@ -99,15 +174,16 @@ class Manager:
         i = 0
         tweetInStreamCounter = 0
         tweetInFileCounter = 0
+        stream = None
         try:
-            stream = tweetstream.SampleStream(u'soldierkam', os.environ["PASSWORD"])
+            stream = StreamWrapper()
             for s in stream:
                 data = pickle.dumps(s)
                 f_out.write(struct.pack('i', len(data)))
                 f_out.write(data)
                 if i > 100:
                     i = 0
-                    print "."
+                    print "Rate: " + str(stream.getCurrentRate()) + "/sec Avg: " + str(stream.getAvgRate()) + "/sec"
                     delta = datetime.now() - start
                     if delta > dayDelta:
                         print u"Close file " + filename + u" (" + unicode(tweetInStreamCounter) + u")"
@@ -123,7 +199,15 @@ class Manager:
                 tweetInFileCounter += 1
         except KeyboardInterrupt:
             print u"Close file " + filename + u" (" + unicode(tweetInStreamCounter) + u")"
-            f_out.close()
+            self.__callQuiet(f_out.close)
+            if stream:
+                self.__callQuiet(stream.close)
+
+    def __callQuiet(self, fun):
+        try:
+            fun()
+        except BaseException:
+            pass
 
     def __renameFile(self, filename, start, tweetsCount):
         dir = os.path.dirname(filename)
