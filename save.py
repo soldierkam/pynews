@@ -161,7 +161,7 @@ class StreamWrapper:
         return self.__rateMon.value()
 
     def getAvgRate(self):
-        return self.__rateMon.avg()
+        return self.__rateMon.lastAvg()
 
 class Manager:
 

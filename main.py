@@ -22,26 +22,36 @@ TYPE_MEDIA = u"media"
 TYPE_URL = u"url"
 
 
+class User:
+
+    def __init__(self, user):
+        self.__timezone = user["time_zone"]
+        self.__folowersCount = user["folowers_count"]
+        self.__id = user["id"]
+        self.__lang = user["lang"]
+
+
 
 class TweetText:
 
-    def __init__(self, t, url_counter, url_resolver):
+    def __init__(self, t, url_resolver):
         self.__id = t["id"]
         self.__text = t["text"]
         self.__lang = ld.detect(t)
-        self.__url = None
-        self.__url_counter = url_counter
         self.__url_resolver = url_resolver
-        self.__createUrl__(t['entities']['urls'], TYPE_URL)
+        self.__urls = []
+        self.__createUrl__(t['entities']['urls'])
         if 'media' in t['entities']:
-            self.__createUrl__(t['entities']['media'], TYPE_MEDIA)
+            self.__createUrl__(t['entities']['media'])
+        self.__user = User(t["user"])
 
-    def __createUrl__(self, entities, type):
+    def __createUrl__(self, entities):
         for urlEntity in entities:
-            self.__url = Url(urlEntity, type)
-            self.__url, urlExisted = self.__url_counter.inc(self.__url)
-            if not urlExisted:
-                self.__url_resolver.addUrlToQueue(self.__url)
+            url = Url.buildOrGetExisting(urlEntity, self.__url_resolver)
+            self.__urls.append(url)
+
+    def urls(self):
+        return self.__urls
 
     def __eq__(self, other):
         return self.__id == other.__id
@@ -52,25 +62,39 @@ class TweetText:
     def text(self):
         return self.__text
 
+    def user(self):
+        return self.__user
+
     def id(self):
         return self.__id
 
     def lang(self):
-        return self.__text
+        return self.__lang
 
     def __str__(self):
         return u":" + unicode(self.__text) + u"(" + unicode(self.__lang) + u"," + unicode(self.__id) + ")"
 
 class Url:
 
-    def __init__(self, entity, type):
+    __urls = {}
+
+    def __init__(self, entity):
         self.__url = entity["url"]
         self.__expanded = entity["expanded_url"]
         self.__validateUrl(self.__url, entity)
         self.__validateUrl(self.__expanded, entity)
         self.__text = None
-        self.__type = type
         self.__dnsError = False
+
+    @staticmethod
+    def buildOrGetExisting(entity, url_resolver):
+        u = Url(entity)
+        if Url.__urls.has_key(u.getUrlDigest()):
+            return Url.__urls.get(u.getUrlDigest())
+        else:
+            Url.__urls[u.getUrlDigest()] = u
+            url_resolver.addUrlToQueue(u)
+        return u
 
     def __validateUrl(self, url, entity):
         parsed = urlparse(url) if url else None
@@ -120,13 +144,18 @@ class Url:
         return self.__expanded
 
     def isResolved(self):
-        return True if self.__text else False
+        return True if self.__text not in ("ERROR", None) else False
 
     def __unicode__(self):
-        return u"{URL " + self.__type + u" :" + self.__url + u", exp:" + unicode(self.__expanded) + u"}"
+        return u"{URL: " + self.__url + u", exp:" + unicode(self.__expanded) + u"}"
 
     def __str__(self):
         return self.__unicode__()
+
+class UrlStatistics():
+
+    def __init__(self):
+        pass
 
 class NothingToDo(Exception):
 
@@ -385,6 +414,27 @@ class UrlResolverManager():
     def setError(self, url):
         self.__resolverCache.put(url)
 
+class FeatureGenerator():
+
+    def __init__(self):
+        self.__data = {}
+
+    def generateFeatures(self, tweetObj):
+        user = tweetObj.user()
+        for url in tweetObj.urls():
+            elem = self.getElem()
+
+
+    def getElem(self, url):
+        key = url.getUrlDigest()
+        if self.__data.has_key(key):
+            return self.__data[key]
+        else:
+            elem = {}
+            elem[""]
+            self.__data[key] = elem
+            return elem
+
 class Model(StoppableThread):
 
     def __init__(self, gui, stream, cacheDir):
@@ -422,6 +472,7 @@ class Model(StoppableThread):
 
     def runPart(self):
         iter = self.__stream.__iter__()
+        featuresGenerator = FeatureGenerator()
         for s in iter:
             if self.isStopping():
                 logger.info("Model end")
@@ -433,7 +484,9 @@ class Model(StoppableThread):
             if u'text' in s and s[u'retweet_count'] > 20:
                 try:
                     tweet = TweetText(s, self.__url_counter, self.__url_resolver)
+                    features = featuresGenerator.generateFeatures(tweet)
                     retweeted = TweetText(s["retweeted_status"], self.__url_counter, self.__url_resolver) if "retweeted_status" in s else None
+                    features = featuresGenerator.generateFeatures(retweeted)
                 except UrlException as e:
                     logger.exception("Cannot build url")
                     continue
