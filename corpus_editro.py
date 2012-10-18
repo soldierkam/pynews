@@ -1,4 +1,8 @@
 # -*- coding: utf-8 *-*
+import time
+from inliner import downloadWebpage
+from tools import stringToDigest
+
 __author__ = 'soldier'
 
 from  wx.grid import Grid
@@ -9,6 +13,7 @@ from wx import grid
 from wx.lib import newevent
 from logger import logger
 from lang import LangDetect
+from main import StoppableThread
 import shelve
 import codecs
 
@@ -26,7 +31,7 @@ class UrlsGrid(Grid):
         self.SetColLabelValue(0, "URL")
         self.SetColLabelValue(1, "Type")
         #self.SetDefaultColSize(200, False)
-        self.__editor = grid.GridCellChoiceEditor(model.classes())
+        self.__editor = grid.GridCellChoiceEditor(model.classes(), allowOthers=True)
         self.Bind(grid.EVT_GRID_SELECT_CELL, self._OnSelectedCell)
         self.Bind(grid.EVT_GRID_CELL_LEFT_DCLICK, self._OnLinkClicked)
         self.Bind(grid.EVT_GRID_CELL_CHANGE, self._OnCellEdit)
@@ -78,8 +83,8 @@ class UrlsGrid(Grid):
 
 class Gui(wx.Frame):
 
-    def __init__(self, model):
-        self.app = wx.App()
+    def __init__(self, app, model):
+        self.__app = app
         wx.Frame.__init__(self, None, title='PyNews', pos=(150,150), size=(750,500))
 
         menuBar = wx.MenuBar()
@@ -113,7 +118,7 @@ class Gui(wx.Frame):
         event.Skip()
 
     def run(self):
-        self.app.MainLoop()
+        self.__app.MainLoop()
 
     def updateUrls(self, msg):
         wx.CallAfter(self.doUpdate, msg.data)
@@ -131,10 +136,14 @@ class Gui(wx.Frame):
 
 class RowModel():
 
-    def __init__(self, url, text, klass):
+    def __init__(self, url, text, klass, model):
+        self.__error = False
+        self.__pending = False
         self.__url = url
         self.__text = text
         self.__klass = klass
+        self.__model = model
+        self.recheckCacheHtmlFile()
 
     def url(self):
         return self.__url
@@ -147,6 +156,33 @@ class RowModel():
 
     def setKlass(self, klass):
         self.__klass = klass
+        self.__model.onKlassEdit(self)
+
+    def isCacheHtml(self):
+        return self.__cachedHtml
+
+    def setError(self):
+        self.__error = True
+        self.__pending = False
+
+    def setPending(self):
+        self.__pending = True
+
+    def isError(self):
+        return self.__error
+
+    def isPending(self):
+        return self.__pending
+
+    def recheckCacheHtmlFile(self):
+        cachedHtml = self.__model.getCachedWebpageFilename(self.__url)
+        self.__cachedHtml = os.path.exists(cachedHtml)
+        if self.__cachedHtml:
+            self.__error = False
+            self.__pending = False
+
+    def getCacheHtmlFilename(self):
+        return self.__model.getCachedWebpageFilename(self.__url)
 
     def writeTextTo(self, filename):
         f = codecs.open(filename, "w", encoding="UTF-8")
@@ -155,14 +191,92 @@ class RowModel():
         f.write(self.text())
         f.close()
 
+class UrlDownloaderController(object):
+
+    def __init__(self, model, workers=10):
+        self.__m = model
+        self.__cacheStatus = shelve.open(model.getCachedWebpageStatusFile())
+        self.__downloaders = []
+        for i in range(0, workers):
+            self.__downloaders.append(UrlDownloader(self, i))
+
+    def start(self):
+        for d in self.__downloaders:
+            d.start()
+
+    def stop(self):
+        for d in self.__downloaders:
+            d.stop()
+        self.__cacheStatus.close()
+
+    def hasStatus(self, url):
+        digest = stringToDigest(url)
+        return self.__cacheStatus.has_key(digest)
+
+    def getStaus(self, url):
+        digest = stringToDigest(url)
+        return self.__cacheStatus[digest]
+
+    def setStatus(self, url, status):
+        digest = stringToDigest(url)
+        self.__cacheStatus[digest] = {"status": status, "url" : url}
+
+    def getCachedWebpageStatusFile(self):
+        return self.__m.getCachedWebpageStatusFile()
+
+    def urlToDownload(self):
+        return self.__m.urlToDownload()
+
+class UrlDownloader(StoppableThread):
+
+    def __init__(self, controller, id):
+        StoppableThread.__init__(self, "Downloader" + str(id))
+        self.__ctrl = controller
+        self.__recheckErrors = True
+
+    def runPart(self):
+        rowModel = self.__ctrl.urlToDownload()
+        if not rowModel:
+            time.sleep(2)
+            return
+        rowModel.setPending()
+        urlAddress = rowModel.url()
+        if not self.__recheckErrors and self.__ctrl.hasStatus(urlAddress):
+            status = self.__ctrl.getStatus()["status"]
+            if status.startswith("ERR"):
+                rowModel.setError()
+                return
+
+        logger.info("Download: " + urlAddress)
+        try:
+            downloadWebpage(urlAddress, rowModel.getCacheHtmlFilename())
+        except:
+            logger.info("Failed: " + urlAddress)
+            rowModel.setError()
+            self.__setStatus(urlAddress, "ERR")
+        else:
+            logger.info("Success: " + urlAddress)
+            rowModel.recheckCacheHtmlFile()
+            self.__setStatus(urlAddress, "OK")
+
+    def __setStatus(self, urlAddress, status):
+        self.__ctrl.setStatus(urlAddress, status)
+
 class Model():
 
-    def __init__(self, mainDir, input):
+    def __init__(self, mainDir, input, inlinedWebpageDir):
         self.__mainDir = mainDir
         self.__input = input
         self.__langId = LangDetect()
+        self.__inlinedWebpageDir = inlinedWebpageDir
+        if not os.path.exists(self.__inlinedWebpageDir):
+            os.makedirs(self.__inlinedWebpageDir)
+        htmlsDir = os.path.join(self.__inlinedWebpageDir, "htmls");
+        if not os.path.exists(htmlsDir):
+            os.makedirs(htmlsDir)
         data = shelve.open(self.__input)
         self.__data = []
+        self.__classes = set([self.defaultClass()])
         url2klass = self.__readKlassFile()
         logger.info("Read shelve...")
         for item in data.itervalues():
@@ -170,9 +284,17 @@ class Model():
             url = item["url"]
             klass = self.__getKlass(url2klass, url)
             if not self.__ignorable(text, url):
-                self.__data.append(RowModel(url, text, klass))
+                self.__data.append(RowModel(url, text, klass, self))
+                if klass:
+                    self.__classes.add(klass)
         logger.info("Done " + str(len(self.__data)))
         Publisher.subscribe(self._onSave, "model.save")
+        self.__downloader = UrlDownloaderController(self)
+        self.__downloader.start()
+
+
+    def stop(self):
+        self.__downloader.stop()
 
     def __ignorable(self, text, url):
         lang = self.__langId.detect(text)
@@ -187,6 +309,20 @@ class Model():
             logger.info("Skip " +str(lang)+ ": " + text[:50] + "... (" + url + ")")
         return result
 
+    def urlToDownload(self):
+        for rowModel in self.__data:
+            if not rowModel.isCacheHtml() and not rowModel.isError() and not rowModel.isPending():
+                return rowModel
+        return None
+
+    def getCachedWebpageFilename(self, urlAddress):
+        name = "htmls/" + stringToDigest(urlAddress) + ".html"
+        return os.path.join(self.__inlinedWebpageDir, name)
+
+    def getCachedWebpageStatusFile(self):
+        name = "status.txt"
+        return os.path.join(self.__inlinedWebpageDir, name)
+
     def _onSave(self, msg):
         self.save()
 
@@ -197,10 +333,13 @@ class Model():
             return None
 
     def classes(self):
-        return ["article", "news", "other", "announce", "blog"]
+        return list(self.__classes);
 
     def defaultClass(self):
         return "other"
+
+    def onClassEdit(self, rowModel):
+        self.__classes.add(rowModel.klass())
 
     def data(self):
         return self.__data
@@ -260,12 +399,22 @@ class Model():
 
 
 def main():
-    mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/corpus2"
-    input="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/tweets/cache"
+    baseDir = "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271"
+    app = wx.App()
+    if not os.path.exists(baseDir):
+        dlg = wx.DirDialog(None, "Choose a dir", baseDir)
+        if dlg.ShowModal() == wx.ID_OK:
+            baseDir = dlg.GetPath()
+        else:
+            return
+    mainDir=os.path.join(baseDir, "corpus2")
+    input=os.path.join(baseDir, "tweets/cache")
+    inlinedWebpageDir=os.path.join(baseDir, "url")
     logger.info("Start app")
-    model = Model(mainDir, input)
-    gui = Gui(model)
+    model = Model(mainDir, input, inlinedWebpageDir)
+    gui = Gui(app, model)
     gui.run()
+    model.stop()
     logger.info("Exit app")
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 *-*
-from httplib import HTTPException
 import time
 import urllib2
 from urllib2 import URLError, HTTPError
@@ -7,15 +6,16 @@ from lang import TwitterLangDetect
 from my_collections import IncDict
 import os
 from gui import Gui
-from threading import Thread, Event, Semaphore
+from threading import Event, Semaphore
 from boilerpipe.extract import Extractor
 from Queue import Queue, Empty
 import shelve
-from hashlib import sha1
 from save import Manager as StreamMgr
 from urlparse import urlparse
 from wx.lib.pubsub.pub import Publisher
 from logger import logger
+from tools import StoppableThread, NothingToDo, stringToDigest
+
 ld = TwitterLangDetect()
 
 TYPE_MEDIA = u"media"
@@ -133,9 +133,7 @@ class Url:
         self.__text = text
 
     def getUrlDigest(self):
-        s = sha1()
-        s.update(self.getUrl())
-        return s.digest()
+        return stringToDigest(self.getUrl())
 
     def getUrl(self):
         return self.__url
@@ -157,11 +155,6 @@ class UrlStatistics():
     def __init__(self):
         pass
 
-class NothingToDo(Exception):
-
-    def __init(self):
-        pass
-
 class UrlException(Exception):
 
     def __init__(self, entity, msg="Invalid url in entity"):
@@ -170,58 +163,6 @@ class UrlException(Exception):
 
     def __str__(self):
         return self.__msg + ": " + str(self.__entity)
-
-class StoppableThread(Thread):
-
-    def __init__(self, name):
-        Thread.__init__(self, name=name)
-        self.__name = name
-        self.__stop = Event()
-        self.__pauseEvent = Event()
-
-    def stop(self):
-        self.__stop.set()
-
-    def isStopping(self):
-        return self.__stop.isSet()
-
-    def pauseJob(self):
-        self.__pauseEvent.set()
-
-    def continueJob(self):
-        self.__pauseEvent.clear()
-
-    def isPaused(self):
-        return self.__pauseEvent.isSet()
-
-    def run(self):
-        self.atBegin()
-        while not self.__stop.isSet():
-            try:
-                if self.__pauseEvent.isSet():
-                    time.sleep(1)
-                    continue
-                self.runPart()
-            except NothingToDo:
-                logger.info(self.__name + ": nothing to do")
-                break
-            except BaseException as exc:
-                logger.exception(self.__name + ": error")
-                break
-        self.atEnd()
-
-    def getThreadName(self):
-        return self.__name
-
-    def runPart(self):
-        pass
-
-    def atBegin(self):
-        pass
-
-    def atEnd(self):
-        logger.info(self.__name + ": exiting...")
-        pass
 
 class PutMsg(object):
 
