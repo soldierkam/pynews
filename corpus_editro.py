@@ -1,10 +1,8 @@
 # -*- coding: utf-8 *-*
 import time
-from inliner import downloadWebpage
+from inliner import Downloader as PageDownloader
+from inliner import REMOVE
 from tools import stringToDigest
-
-__author__ = 'soldier'
-
 from  wx.grid import Grid
 import wx
 import os
@@ -28,8 +26,8 @@ class UrlsGrid(Grid):
         Grid.__init__(self, parent)
         self.__defaultClass = model.defaultClass()
         self.CreateGrid(0, 2)
-        self.SetColLabelValue(0, "URL")
-        self.SetColLabelValue(1, "Type")
+        self.SetColLabelValue(0, "Type")
+        self.SetColLabelValue(1, "Actions")
         #self.SetDefaultColSize(200, False)
         self.__editor = grid.GridCellChoiceEditor(model.classes(), allowOthers=True)
         self.Bind(grid.EVT_GRID_SELECT_CELL, self._OnSelectedCell)
@@ -45,18 +43,18 @@ class UrlsGrid(Grid):
         self.__ref = {}
         for url in sorted(urls, key=urlSortFunction, reverse=True):
             self.SetRowLabelValue(i, unicode(i+1))
-            self.SetCellValue(i, 0, url.url())
-            self.SetReadOnly(i, 0)
-            self.SetCellEditor(i, 1, self.__editor);
-            self.SetCellValue(i, 1, url.klass())
+            self.SetCellValue(i, 1, url.url())
+            self.SetReadOnly(i, 1)
+            self.SetCellEditor(i, 0, self.__editor);
+            self.SetCellValue(i, 0, url.klass())
             self.__ref[i] = url
             i += 1
         self.AutoSizeColumns()
-        self.SetColSize(1, 100)
+        self.SetColSize(0, 100)
 
     def _OnEditorShown(self, event):
-        if not self.GetCellValue(event.GetRow(), 1):
-            self.SetCellValue(event.GetRow(), 1, self.__defaultClass)
+        if not self.GetCellValue(event.GetRow(), 0):
+            self.SetCellValue(event.GetRow(), 0, self.__defaultClass)
             self.__currentSelection.setKlass(self.__defaultClass)
 
     def _OnSelectedCell( self, event ):
@@ -76,10 +74,15 @@ class UrlsGrid(Grid):
 
     def _OnLinkClicked(self, event):
         r = event.GetRow()
-        if event.Col == 0:
-            href = self.__ref[r].url()
+        if event.Col == 1:
+            rowModel = self.__ref[r]
+            if rowModel.isCacheHtml():
+                href = rowModel.getCacheHtmlFilename()
+            else:
+                href = rowModel.url()
             import webbrowser
             webbrowser.open(href)
+
 
 class Gui(wx.Frame):
 
@@ -193,12 +196,13 @@ class RowModel():
 
 class UrlDownloaderController(object):
 
-    def __init__(self, model, workers=10):
+    def __init__(self, model, workers=1):
         self.__m = model
         self.__cacheStatus = shelve.open(model.getCachedWebpageStatusFile())
+        self.__pageDownloader = PageDownloader(logger=logger, iframes=REMOVE)
         self.__downloaders = []
         for i in range(0, workers):
-            self.__downloaders.append(UrlDownloader(self, i))
+            self.__downloaders.append(UrlDownloader(self, i, self.__pageDownloader))
 
     def start(self):
         for d in self.__downloaders:
@@ -207,7 +211,14 @@ class UrlDownloaderController(object):
     def stop(self):
         for d in self.__downloaders:
             d.stop()
-        self.__cacheStatus.close()
+
+    def onWorkerStop(self, worker):
+        notingToDo = True
+        for w in self.__downloaders:
+            if w.isAlive():
+                notingToDo = False
+        if notingToDo:
+            self.__cacheStatus.close()
 
     def hasStatus(self, url):
         digest = stringToDigest(url)
@@ -229,10 +240,11 @@ class UrlDownloaderController(object):
 
 class UrlDownloader(StoppableThread):
 
-    def __init__(self, controller, id):
-        StoppableThread.__init__(self, "Downloader" + str(id))
+    def __init__(self, controller, id, pageDownloader):
+        StoppableThread.__init__(self, "URLDownloader" + str(id))
         self.__ctrl = controller
         self.__recheckErrors = True
+        self.__pageDownloader = pageDownloader
 
     def runPart(self):
         rowModel = self.__ctrl.urlToDownload()
@@ -249,7 +261,7 @@ class UrlDownloader(StoppableThread):
 
         logger.info("Download: " + urlAddress)
         try:
-            downloadWebpage(urlAddress, rowModel.getCacheHtmlFilename())
+            self.__pageDownloader.download(urlAddress, rowModel.getCacheHtmlFilename())
         except:
             logger.info("Failed: " + urlAddress)
             rowModel.setError()
@@ -261,6 +273,10 @@ class UrlDownloader(StoppableThread):
 
     def __setStatus(self, urlAddress, status):
         self.__ctrl.setStatus(urlAddress, status)
+
+    def atEnd(self):
+        StoppableThread.atEnd(self)
+        self.__ctrl.onWorkerStop(self)
 
 class Model():
 
