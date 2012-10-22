@@ -67,7 +67,7 @@ class ContentResolver():
             return expectBinary
         if contentType.startswith("text/"):
             return False
-        #if url.getExtension() in ["css", "html", "js", "htm"]:
+            #if url.getExtension() in ["css", "html", "js", "htm"]:
         #    return False
         return True
 
@@ -113,7 +113,11 @@ class MediaUrl():
         return False
 
     def downloadContent(self):
-        ct = urllib2.urlopen(self.__current)
+        if isinstance(self.__current, unicode):
+            url = self.__current.encode("UTF-8")
+        else:
+            url = self.__current
+        ct = urllib2.urlopen(url)
         self.__current = ct.geturl()
         contentType = ct.headers["content-type"] if ct.headers.has_key("content-type") else None
         return ct.read(), contentType
@@ -163,6 +167,10 @@ class Replacer:
             self.__logger.error("Cannot replace url=" + str(url) + " with content (parent url=" + str(self.__parent) + ", base url= " + str(self.__base) + ", path=" + str(pathName) + ")")
             self.__logger.exception(e)
         return u"about:blank"
+
+    def __call__(self, *args, **kwargs):
+        return self.getEncodedPath(args[0].group(1).replace("\"", "").replace("'", ""))
+
 
 class Downloader():
 
@@ -312,7 +320,7 @@ class Downloader():
                         u = baseFilename + "_" + str(c) + extension
                         self.download(baseUrl.resolve(src), u)
                         iframe["src"] = path.basename(u)
-                        iframe.insert(0,  MyNavigableString("<!-- " + str(src) + " -->"))
+                        iframe.insert(0,  MyNavigableString(u"<!-- " + unicode(src) + u" -->"))
                     elif self.__js == REMOVE:
                         u = str(baseUrl.resolve(src)) if src else "about:blank"
                         iframe["src"] = u
@@ -322,30 +330,12 @@ class Downloader():
                         continue
 
                 except BaseException as e:
-                    self.__logger.exception(u'failed to load iframe from %s' % unicode(src))
+                    self.__logger.exception(u'failed to load iframe from %s' % unicode(src) + " (base url = " + unicode(baseUrl) + ")")
                 c += 1
 
     def __inlineExternalResourcesInCss(self, baseUrl, cssContent):
-        replacer = Replacer(baseUrl, self.__contentResolver, self.__logger)
-        pos = 0
-        while True:
-            firstIdx = cssContent.find(u"url(", pos)
-            if firstIdx == -1:
-                break;
-            firstIdx += 4
-            quote = cssContent[firstIdx]
-            if quote not in ["\"", "'"]:
-                quote = None
-                lastQuoteIdx = firstIdx + 1
-            else:
-                lastQuoteIdx = cssContent.find(quote, firstIdx)
-                if lastQuoteIdx == -1:
-                    raise ValueError("Cannot find end of URL: start at " + str(firstIdx))
-            lastIdx = cssContent.find(")", lastQuoteIdx)
-            path = cssContent[firstIdx+1:lastIdx-1] if quote else cssContent[firstIdx:lastIdx]
-            cssContent = cssContent[:firstIdx] + replacer.getEncodedPath(path) + cssContent[lastIdx:]
-            pos = lastQuoteIdx
-        return cssContent
+        return re.sub(ur'url\(([^\)]+)\)', Replacer(baseUrl, self.__contentResolver, self.__logger), cssContent)
+
 
     def __resolvePath(self, base, target):
         return urlparse.urljoin(base.getCurrentUrl(),target)
