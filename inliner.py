@@ -2,7 +2,7 @@
 import gzip
 import sys,re,urllib2,base64,mimetypes,urlparse
 import threading
-from urllib2 import HTTPError
+from urllib2 import HTTPError, HTTPRedirectHandler
 from BeautifulSoup import BeautifulSoup, Tag, CData, NavigableString
 import chardet
 from os import path
@@ -26,54 +26,60 @@ class ContentResolver():
         if self.__content_cache.has_key(key):
             val = self.__content_cache[key]
             url.replaceWith(val["url"])
-            return val["content"]
+            return val["content"], val["mime"]
 
         threadName = threading.currentThread().name
         self.__logger.debug(threadName + u": download " + unicode(url))
-        if url.isRemote():
-            if url.ignoreUrl():
-                return u''
+        if url.isBase64():
+            return url.getCurrentUrl(), None
 
-            rawdata, contentType = url.downloadContent()
-            if not self.isBinary(expect_binary, url, contentType):
-                encoding = self.getEncoding(rawdata, contentType)
+        if url.isRemote():
+            content = url.downloadContent()
+            if not self.isBinary(expect_binary, url, content):
+                encoding = self.getEncoding(content)
                 self.__logger.debug("Apply charset " + str(encoding) + " to " + str(url))
-                s = unicode(rawdata, encoding)
-                self.__content_cache[key] = {"content":s, "url": url}
-                return s
+                s = unicode(content.data(), encoding)
+                self.__content_cache[key] = {"content":s, "url": url, "mime": content.mime()}
+                return s, content.mime()
             else:
-                self.__content_cache[key] = {"content":rawdata, "url": url}
-                return rawdata
+                self.__content_cache[key] = {"content":content.data(), "url": url, "mime": None}
+                return content.data(), content.mime()
         else:
             s = open(url.getCurrentUrl()).read()
             if not expect_binary:
                 encoding = chardet.detect(s)
                 s = s.decode(encoding['encoding'])
             self.__content_cache[key] = s
-            return s
+            return s, None
 
-    def getEncoding(self, rawdata, contentType):
-        if contentType.find("charset") != -1:
-            return contentType.split("charset=")[1]
-        idx = rawdata.find("@charset")
+    def getEncoding(self, content):
+        if content.encoding():
+            return content.encoding()
+        idx = content.data().find("@charset")
         if idx != -1:
-            m = re.search(r"^@charset[\s]+['\"]{0,1}([a-zA-Z0-9\-]+)['\"]{0,1}", rawdata)
+            m = re.search(r"^@charset[\s]+['\"]{0,1}([a-zA-Z0-9\-]+)['\"]{0,1}", content.data())
             if m:
                 return m.group(1)
-        return chardet.detect(rawdata)['encoding']
+        enc = chardet.detect(content.data())['encoding']
+        if not enc:
+            enc = "iso-8859-1"
+        return enc
 
-    def isBinary(self, expectBinary, url, contentType):
+    def isBinary(self, expectBinary, url, content):
         if expectBinary != None:
             return expectBinary
-        if contentType.startswith("text/"):
+        mime = content.mime()
+        if mime and mime.startswith("text/"):
             return False
             #if url.getExtension() in ["css", "html", "js", "htm"]:
         #    return False
         return True
 
     def getEncodedContent(self, url, expect_binary=None):
-        content = self.getContent(url, expect_binary)
-        mime = mimetypes.guess_type(url.getCurrentUrl())[0]
+        content, mime = self.getContent(url, expect_binary)
+        mime = mime or mimetypes.guess_type(url.getCurrentUrl())[0]
+        if not mime:
+            raise ValueError(u"Unknown mime " + unicode(url))
         return u'data:%s;base64,%s' % (mime, base64.standard_b64encode(content.encode("UTF-8") if type(content) == unicode else content))
 
 
@@ -84,6 +90,30 @@ class MyNavigableString(NavigableString):
             return self.encode(encoding)
         else:
             return self
+
+class Content():
+
+    def __init__(self, data, contentType):
+        self.__d = data
+        if contentType:
+            if contentType.find("charset") != -1:
+                self.__e = contentType.split("charset=")[1]
+                self.__m = contentType.split(";")[0]
+            else:
+                self.__e = None
+                self.__m = contentType
+        else:
+            self.__e = None
+            self.__m = None
+
+    def mime(self):
+        return self.__m
+
+    def encoding(self):
+        return self.__e
+
+    def data(self):
+        return self.__d
 
 class MediaUrl():
 
@@ -101,26 +131,26 @@ class MediaUrl():
     def isRemote(self):
         return urlparse.urlparse(self.__current)[0] in ('http','https', '')
 
-    def ignoreUrl(self):
+    def downloadContent(self):
         url_blacklist = ('getsatisfaction.com',
                          'google-analytics.com',)
         for bli in url_blacklist:
             if self.__url.find(bli) != -1:
-                return True
+                return None
 
         if self.__current.startswith("data:"):
-            return True
-        return False
+            return Content(self.__current, None)
 
-    def downloadContent(self):
         if isinstance(self.__current, unicode):
             url = self.__current.encode("UTF-8")
         else:
             url = self.__current
-        ct = urllib2.urlopen(url)
+        opener = urllib2.build_opener(HTTPRedirectHandler())
+        #opener.addheaders = [('User-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.94 Safari/537.4')]
+        ct = opener.open(url)
         self.__current = ct.geturl()
         contentType = ct.headers["content-type"] if ct.headers.has_key("content-type") else None
-        return ct.read(), contentType
+        return Content(ct.read(), contentType)
 
     def setEncoding(self, enc):
         self.__enc = enc
@@ -132,7 +162,12 @@ class MediaUrl():
         return self.__current
 
     def resolve(self, path):
+        if path.startswith("data:"):
+            return MediaUrl(path, self.__logger)
         return MediaUrl(urlparse.urljoin(self.__current, path), self.__logger)
+
+    def isBase64(self):
+        return self.__current.startswith("data:")
 
     def getId(self):
         return self.__url
@@ -160,6 +195,8 @@ class Replacer:
         url = None
         try:
             url = self.__base.resolve(pathName)
+            if url.isBase64():
+                return url.getCurrentUrl()
             return self.__contentResolver.getEncodedContent(url)
         except HTTPError as e:
             self.__logger.error("Cannot replace url=" + str(url) + " with content (parent url=" + str(self.__parent) + ", base url= " + str(self.__base) + ", path=" + str(pathName) + "): " + str(e))
@@ -169,7 +206,7 @@ class Replacer:
         return u"about:blank"
 
     def __call__(self, *args, **kwargs):
-        return self.getEncodedPath(args[0].group(1).replace("\"", "").replace("'", ""))
+        return u"url(" + self.getEncodedPath(args[0].group(1).strip().replace("\"", "").replace("'", "")) + u")"
 
 
 class Downloader():
@@ -203,7 +240,7 @@ class Downloader():
         return self.__downloadWebpage(MediaUrl(url, self.__logger), filename)
 
     def __downloadWebpage(self, mediaUrl, outputFilename=None):
-        content = self.__contentResolver.getContent(mediaUrl, False)
+        content = self.__contentResolver.getContent(mediaUrl, False)[0]
 
         bs = BeautifulSoup(content)
         self.__replaceRelativeUrls(mediaUrl,bs)
@@ -246,7 +283,7 @@ class Downloader():
                 try:
                     cssHref = css['href']
                     cssUrl = baseUrl.resolve(cssHref)
-                    cssContent = self.__inlineExternalResourcesInCss(cssUrl, self.__contentResolver.getContent(cssUrl, False)) if self.__css == INLINE else "<!--" + str(cssUrl) + "-->"
+                    cssContent = self.__inlineExternalResourcesInCss(cssUrl, self.__contentResolver.getContent(cssUrl, False)[0]) if self.__css == INLINE else "<!--" + str(cssUrl) + "-->"
                     newStyleTag = Tag(soup, "style")
                     newStyleTag.insert(0,  MyNavigableString(cssContent))
                     if css.get('media'):
@@ -267,7 +304,7 @@ class Downloader():
                         src = img[attrName]
                         break
                 path = base_url.resolve(src)
-                img['src'] = self.__contentResolver.getEncodedContent(path)
+                img['src'] = path.getCurrentUrl() if path.isBase64() else self.__contentResolver.getEncodedContent(path)
             except BaseException as e:
                 self.__logger.exception(u'failed to load image from %s' % img['src'])
 
