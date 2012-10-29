@@ -6,6 +6,7 @@ from urllib2 import HTTPError, HTTPRedirectHandler
 from BeautifulSoup import BeautifulSoup, Tag, CData, NavigableString
 import chardet
 from os import path
+from magic import Magic
 
 INLINE = "inline"
 DO_NTH = "do_nothing"
@@ -42,7 +43,7 @@ class ContentResolver():
                 self.__content_cache[key] = {"content":s, "url": url, "mime": content.mime()}
                 return s, content.mime()
             else:
-                self.__content_cache[key] = {"content":content.data(), "url": url, "mime": None}
+                self.__content_cache[key] = {"content":content.data(), "url": url, "mime": content.mime()}
                 return content.data(), content.mime()
         else:
             s = open(url.getCurrentUrl()).read()
@@ -93,18 +94,24 @@ class MyNavigableString(NavigableString):
 
 class Content():
 
+    magicMime = Magic(mime_encoding=True)
+
     def __init__(self, data, contentType):
         self.__d = data
         if contentType:
             if contentType.find("charset") != -1:
-                self.__e = contentType.split("charset=")[1]
-                self.__m = contentType.split(";")[0]
+                m = re.compile(r"([\S]+)[ ]*;[ ]*charset[ :=]+(\S+)").search(contentType)
+                self.__e = m.group(2)
+                self.__m = m.group(1)
             else:
                 self.__e = None
                 self.__m = contentType
         else:
             self.__e = None
             self.__m = None
+
+        if not self.__m:
+            self.__m = Content.magicMime.from_buffer(data)
 
     def mime(self):
         return self.__m
@@ -208,6 +215,28 @@ class Replacer:
     def __call__(self, *args, **kwargs):
         return u"url(" + self.getEncodedPath(args[0].group(1).strip().replace("\"", "").replace("'", "")) + u")"
 
+class ImportReplacer:
+
+    def __init__(self, cssUrl, contentResolver, logger):
+        self.__base = cssUrl.resolve('.')
+        self.__parent = cssUrl
+        self.__contentResolver = contentResolver
+        self.__logger = logger
+
+    def getEncodedPath(self, pathName):
+        url = None
+        try:
+            url = self.__base.resolve(pathName)
+            return self.__contentResolver.getContent(url)[0]
+        except HTTPError as e:
+            self.__logger.error("Cannot replace import url=" + str(url) + " with content (parent url=" + str(self.__parent) + ", base url= " + str(self.__base) + ", path=" + str(pathName) + "): " + str(e))
+        except BaseException as e:
+            self.__logger.error("Cannot replace import url=" + str(url) + " with content (parent url=" + str(self.__parent) + ", base url= " + str(self.__base) + ", path=" + str(pathName) + ")")
+            self.__logger.exception(e)
+        return u""
+
+    def __call__(self, *args, **kwargs):
+        return self.getEncodedPath(args[0].group(1).strip().replace("\"", "").replace("'", ""))
 
 class Downloader():
 
@@ -283,7 +312,11 @@ class Downloader():
                 try:
                     cssHref = css['href']
                     cssUrl = baseUrl.resolve(cssHref)
-                    cssContent = self.__inlineExternalResourcesInCss(cssUrl, self.__contentResolver.getContent(cssUrl, False)[0]) if self.__css == INLINE else "<!--" + str(cssUrl) + "-->"
+                    if self.__css == INLINE:
+                        data = self.__contentResolver.getContent(cssUrl, False)[0]
+                        cssContent = self.__inlineExternalResourcesInCss(cssUrl, data)
+                    else:
+                        cssContent = u"<!--" + str(cssUrl) + u"-->"
                     newStyleTag = Tag(soup, "style")
                     newStyleTag.insert(0,  MyNavigableString(cssContent))
                     if css.get('media'):
@@ -371,6 +404,7 @@ class Downloader():
                 c += 1
 
     def __inlineExternalResourcesInCss(self, baseUrl, cssContent):
+        cssContent = re.compile(ur'@import[ ]+url\(([^\)]+)\)').sub(ImportReplacer(baseUrl, self.__contentResolver, self.__logger), cssContent)
         return re.sub(ur'url\(([^\)]+)\)', Replacer(baseUrl, self.__contentResolver, self.__logger), cssContent)
 
 
