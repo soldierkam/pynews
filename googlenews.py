@@ -1,6 +1,7 @@
 import Queue
 from Queue import Empty
 from _socket import timeout
+import codecs
 from datetime import time
 import logging
 import os
@@ -57,41 +58,31 @@ class GoogleNewsUrl():
     def build(self):
         return "http://news.google.com/news?output=rss&ned=" + self.__edition + "&topic=" + self.__topic
 
-class RssAnalyzer(StoppableThread):
+class RssAnalyzer():
 
     def __init__(self, dir):
-        StoppableThread.__init__(self, "RssAnalyzer")
         self.__downloader = UrlDownloaderController(dir)
         self.__pollers = []
-        self.__queue = Queue.Queue()
-        for lang in ["us"]:
+        for lang in ["us", "uk", "au", "en_ca"]:
             for topic in [HEADLINES, WORLD, NATION, SCI_TECH, ELECTIONS, POLITICS, ENTERTAINMENT, SPORT, HEALTH]:
                 url = GoogleNewsUrl().setEdition(lang).setTopic(topic).build()
-                p = RssPoller(url, topic, lang, self.__queue)
+                p = RssPoller(url, topic, lang, self)
                 self.__pollers.append(p)
                 p.start()
-        self.start()
 
-    def runPart(self):
-        try:
-            item = self.__queue.get(timeout=1)
-            url = item["link"]
-            topic = item["topic"]
-            self.__downloader.addToQueue(url, topic)
-        except Empty:
-            return
-
+    def addToQueue(self, url, topic):
+        return self.__downloader.addToQueue(url, topic)
 
 INTERVAL = 60
 
 class RssPoller(StoppableThread):
 
-    def __init__(self, newsUrl, topic, lang, queue):
+    def __init__(self, newsUrl, topic, lang, rssAnalyzer):
         StoppableThread.__init__(self, "Rss-" + topic + "-" + lang)
         self.__url = newsUrl
         self.__lang = lang
         self.__topic = topic
-        self.__queue = queue
+        self.__rssAnalyzer = rssAnalyzer
         self.__secondsSinceLastCheck = random.randint(0, INTERVAL)
 
 
@@ -102,8 +93,10 @@ class RssPoller(StoppableThread):
             return
         logger.info("Check rss at " + self.__url)
         feed = feedparser.parse(self.__url)
+        c = 0
         for item in feed["items"]:
-            self.__queue.put({"link": item["links"][0]["href"], "topic": self.__topic})
+            c += 1 if self.__rssAnalyzer.addToQueue(item["links"][0]["href"], self.__topic) else 0
+        logger.info("Add " + str(c) + " urls to queue (" + self.__topic + ")")
         self.__secondsSinceLastCheck = 0
 
 
@@ -133,13 +126,15 @@ class UrlDownloaderController():
         idx = url.index("&url=") + 5
         url = url[idx:]
         if uuid in self.__pending:
-            return
+            return False
         htmlFilename =  os.path.join(topicDir, uuid + ".html")
         txtFilename =  os.path.join(topicDir, uuid + ".txt")
         if not os.path.exists(htmlFilename) or not os.path.exists(txtFilename):
             self.__pending.append(uuid)
             self.__queue.put({"url": url, "html": htmlFilename, "txt": txtFilename, "uuid": uuid})
             self.__logFile.write(os.path.join(topic, uuid + ".html") + " : " + url + "\n")
+            return True
+        return False
 
     def __jobCallback(self, uuid):
         self.__pending.remove(uuid)
@@ -174,7 +169,7 @@ class UrlDownloader(StoppableThread):
             logger.info("Download: " + urlAddr)
             self.__pageDownloader.download(urlAddr, outputHtmlFilename)
             extractor = Extractor(extractor='ArticleExtractor', url=urlAddr)
-            f = open(outputTxtFilename, "w")
+            f = codecs.open(outputTxtFilename, "w", "utf-8")
             f.write(extractor.getText())
             f.close()
         except Empty:
