@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import gzip
+import hashlib
+import shelve
 import sys,re,urllib2,base64,mimetypes,urlparse
 import threading
 from urllib2 import HTTPError, HTTPRedirectHandler
@@ -16,21 +18,18 @@ ACTIONS = [INLINE, DO_NTH, REMOVE]
 
 class ContentResolver():
 
-    def __init__(self, logger):
-        self.__content_cache = {}
+    def __init__(self, logger, cache):
+        self.__content_cache = cache
         self.__logger = logger
 
     def getContent(self, url, expect_binary = None):
         if not isinstance(url, MediaUrl):
-            url = MediaUrl(url)
-        key = url.getId()
-        if self.__content_cache.has_key(key):
-            val = self.__content_cache[key]
+            url = MediaUrl(url, self.__logger)
+        if self.__content_cache.has_key(url.getId()):
+            val = self.__content_cache[url.getId()]
             url.replaceWith(val["url"])
             return val["content"], val["mime"]
 
-        threadName = threading.currentThread().name
-        self.__logger.debug(threadName + u": download " + unicode(url))
         if url.isBase64():
             return url.getCurrentUrl(), None
 
@@ -40,18 +39,13 @@ class ContentResolver():
                 encoding = self.getEncoding(content)
                 self.__logger.debug("Apply charset " + str(encoding) + " to " + str(url))
                 s = unicode(content.data(), encoding)
-                self.__content_cache[key] = {"content":s, "url": url, "mime": content.mime()}
+                self.__content_cache[url.getId()] = {"content":s, "url": url.getCurrentUrl(), "mime": content.mime()}
                 return s, content.mime()
             else:
-                self.__content_cache[key] = {"content":content.data(), "url": url, "mime": content.mime()}
+                self.__content_cache[url.getId()] = {"content":content.data(), "url": url.getCurrentUrl(), "mime": content.mime()}
                 return content.data(), content.mime()
         else:
-            s = open(url.getCurrentUrl()).read()
-            if not expect_binary:
-                encoding = chardet.detect(s)
-                s = s.decode(encoding['encoding'])
-            self.__content_cache[key] = s
-            return s, None
+            raise ValueError()
 
     def getEncoding(self, content):
         if content.encoding():
@@ -135,6 +129,9 @@ class MediaUrl():
     def __str__(self):
         return self.__current
 
+    def __eq__(self, other):
+        return self.__current == other.__current
+
     def isRemote(self):
         return urlparse.urlparse(self.__current)[0] in ('http','https', '')
 
@@ -152,6 +149,8 @@ class MediaUrl():
             url = self.__current.encode("UTF-8")
         else:
             url = self.__current
+        threadName = threading.currentThread().name
+        self.__logger.debug(threadName + u": download " + unicode(url))
         opener = urllib2.build_opener(HTTPRedirectHandler())
         #opener.addheaders = [('User-agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.4 (KHTML, like Gecko) Chrome/22.0.1229.94 Safari/537.4')]
         ct = opener.open(url)
@@ -171,18 +170,19 @@ class MediaUrl():
     def resolve(self, path):
         if path.startswith("data:"):
             return MediaUrl(path, self.__logger)
+            #if path.startswith("{{") and path.endswith("}}"):
+        #    path = path[2:-2]
+        #    path = path.split("|")[0]
         return MediaUrl(urlparse.urljoin(self.__current, path), self.__logger)
 
     def isBase64(self):
         return self.__current.startswith("data:")
 
     def getId(self):
-        return self.__url
+        return hashlib.sha1(self.__url).hexdigest()
 
-    def replaceWith(self, otherUrl):
-        self.__logger = otherUrl.__logger
-        self.__url = otherUrl.__url
-        self.__current = otherUrl.__current
+    def replaceWith(self, currentUrl):
+        self.__current = currentUrl
 
     def getCurrentUrl(self):
         return self.__current
@@ -201,6 +201,8 @@ class Replacer:
     def getEncodedPath(self, pathName):
         url = None
         try:
+            if pathName == "about:blank":
+                return pathName
             url = self.__base.resolve(pathName)
             if url.isBase64():
                 return url.getCurrentUrl()
@@ -240,7 +242,7 @@ class ImportReplacer:
 
 class Downloader():
 
-    def __init__(self, logger=None, js=REMOVE, img=INLINE, css=INLINE, iframes=INLINE, compress=False):
+    def __init__(self, logger=None, js=REMOVE, img=INLINE, css=INLINE, iframes=INLINE, compress=False, cache={}):
         if not logger:
             import logging
             from logging import StreamHandler
@@ -251,7 +253,7 @@ class Downloader():
             logger.addHandler(handler)
         self.__logger = logger
         self.__compress = compress
-        self.__contentResolver = ContentResolver(self.__logger)
+        self.__contentResolver = ContentResolver(self.__logger, cache)
         self.__js = self.__validateAction(js)
         self.__img = self.__validateAction(img)
         self.__css = self.__validateAction(css)
@@ -269,19 +271,53 @@ class Downloader():
         return self.__downloadWebpage(MediaUrl(url, self.__logger), filename)
 
     def __downloadWebpage(self, mediaUrl, outputFilename=None):
-        content = self.__contentResolver.getContent(mediaUrl, False)[0]
-
-        bs = BeautifulSoup(content)
+        bs = self.__getBeautifulSoup(mediaUrl)
         self.__replaceRelativeUrls(mediaUrl,bs)
         self.__replaceExternalResourceInStyles(mediaUrl,bs)
         self.__replaceJavascript(mediaUrl,bs)
         self.__replaceCss(mediaUrl,bs)
+        self.__replaceStyleTag(mediaUrl,bs)
         self.__replaceImages(mediaUrl,bs)
         self.__replaceIframes(mediaUrl,bs, outputFilename)
         if outputFilename:
             self.__writeToFile(bs, outputFilename)
         else:
             return bs.renderContents()
+
+    def __getBeautifulSoup(self, mediaUrl):
+        while True:
+            content = self.__contentResolver.getContent(mediaUrl, False)[0]
+            doOuterLoop = False
+            bs = BeautifulSoup(content)
+            metaRefresh = bs.find("meta", {"http-equiv": "refresh"})
+            if metaRefresh:
+                metaContent = metaRefresh.get("content")
+                refreshTime = None
+                if metaContent:
+                    for metaContentPart in metaContent.split(";"):
+                        metaContentPart = metaContentPart.strip()
+                        match = re.compile("url[ ]*=[ ]*([^ ]+)", flags=re.IGNORECASE).search(metaContentPart)
+                        if match:
+                            newMediaUrl = mediaUrl.resolve(match.group(1))
+                            if refreshTime == 0:
+                                doOuterLoop = True
+                                self.__logger.info("Meta redirect to " + str(newMediaUrl.getCurrentUrl()))
+                                mediaUrl = newMediaUrl
+                            else:
+                                doOuterLoop = False
+                            break
+                        else:
+                            try:
+                                refreshTime = int(metaContentPart)
+                            except:
+                                pass
+                    else:
+                        doOuterLoop = False
+                else:
+                    doOuterLoop = False
+            if not doOuterLoop:
+                return bs
+
 
     def __writeToFile(self, bs, filename):
         if self.__compress:
@@ -325,6 +361,17 @@ class Downloader():
                 except BaseException as e:
                     self.__logger.exception(u'failed to load css from %s' % css['href'])
                     #css.replaceWith('<!-- failed to load css from %s -->' % css['href'])
+
+    def __replaceStyleTag(self, baseUrl, soup):
+        if self.__css != DO_NTH:
+            for style in soup.findAll('style'):
+                try:
+                    data = ''.join(style.findAll(text=True))
+                    cssContent = self.__inlineExternalResourcesInCss(baseUrl, data)
+                    style.insert(0,  MyNavigableString(cssContent))
+                except BaseException as e:
+                    self.__logger.exception(u'failed to replace style tag')
+
 
     def __replaceImages(self, base_url,soup):
         from itertools import chain
@@ -385,6 +432,8 @@ class Downloader():
         if self.__iframes != DO_NTH:
             for iframe in soup.findAll('iframe'):
                 src = iframe.get("src") if iframe.get('src') else None
+                if not src or src.startswith("javascript:"):
+                    continue
                 try:
                     if src and self.__iframes == INLINE:
                         u = baseFilename + "_" + str(c) + extension
@@ -401,10 +450,15 @@ class Downloader():
 
                 except BaseException as e:
                     self.__logger.exception(u'failed to load iframe from %s' % unicode(src) + " (base url = " + unicode(baseUrl) + ")")
+                    u = str(baseUrl.resolve(src)) if src else "about:blank"
+                    iframe["src"] = u
+                    iframe.insert(0,  MyNavigableString(u"<!-- " + unicode(src) + u" -->"))
                 c += 1
 
     def __inlineExternalResourcesInCss(self, baseUrl, cssContent):
         cssContent = re.compile(ur'@import[ ]+url\(([^\)]+)\)').sub(ImportReplacer(baseUrl, self.__contentResolver, self.__logger), cssContent)
+        cssContent = re.compile(ur'@import[ ]+\'([^\']+)\'').sub(ImportReplacer(baseUrl, self.__contentResolver, self.__logger), cssContent)
+        cssContent = re.compile(ur'@import[ ]+"([^"]+)"').sub(ImportReplacer(baseUrl, self.__contentResolver, self.__logger), cssContent)
         return re.sub(ur'url\(([^\)]+)\)', Replacer(baseUrl, self.__contentResolver, self.__logger), cssContent)
 
 
@@ -415,6 +469,21 @@ class Downloader():
         return self.__contentResolver.getContent(url, binary)
 
 if __name__ == '__main__':
-    d = Downloader()
-    d.download(sys.argv[1], sys.argv[2])
+    d = Downloader(cache = shelve.open("/tmp/inliner_cache_v1.bin"))
+    urls = [
+        'http://nuplays.com/',
+        'http://www.legalbrief.co.za/article.php?story%3D2012103009225020',
+        'http://news.cincinnati.com/article/20121029/NEWS0103/310290148/CVG-feels-effects-East-Coast-closures',
+        'http://www.shanghaidaily.com/article/article_xinhua.asp?id%3D104698',
+        'http://www.google.com/hostednews/ap/article/ALeqM5gZDhv66Ann42fdFPF-E_f75cKilA?docId%3D1261bbfb983d4d279b26a4c4b85704e2',
+        'http://thestar.com.my/news/story.asp?file%3D/2012/10/29/worldupdates/2012-10-29T123547Z_2_BRE89S0IZ_RTROPTT_0_UK-DUTCH-POLITICS%26sec%3DWorldupdates',
+        'http://blogs.telegraph.co.uk/news/danhodges/100187102/wisconsin-iowa-ohio-funny-how-mitt-romneys-storm-relief-events-are-all-in-pivotal-swing-states/',
+        'http://af.reuters.com/article/worldNews/idAFBRE89U0QT20121031',
+        'http://www.nytimes.com/2012/10/30/business/no-decision-on-timing-of-jobs-report.html?_r=0',
+        'http://t.co/dBP0Z19V'
+    ]
+    c = 1
+    for url in urls:
+        d.download(url, sys.argv[1] + str(c) + ".html")
+        c += 1
 
