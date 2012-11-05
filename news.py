@@ -1,10 +1,28 @@
 from nltk import PorterStemmer, FreqDist
-from nltk.corpus import stopwords
+from nltk.classify import apply_features
+from nltk.corpus import stopwords, LazyCorpusLoader, CategorizedPlaintextCorpusReader
 from logger import logger
+from nltk import NaiveBayesClassifier, ConfusionMatrix
+import random, nltk
 
 __author__ = 'soldier'
 
 import os
+
+newsCorpus = LazyCorpusLoader('news_corpus', CategorizedPlaintextCorpusReader, '(data).*', cat_file='cats.txt')
+
+class FeatureGenerator():
+
+    def __init__(self, freqDists):
+        self.__words = set()
+        for label, fd in freqDists.items():
+            for w in fd.keys()[:1500]:
+                self.__words.add(w)
+
+    def __call__(self, document):
+        doc = [w.lower() for w in document.split()]
+        return dict([("contains(%s)" % w, w in doc) for w in self.__words])
+
 
 class NewsClassificator():
 
@@ -22,8 +40,17 @@ class NewsClassificator():
                     if part.isalnum() and part not in ignore:
                         freqDist.inc(self.__stemmer.stem(part))
             freqDists[klassId] = freqDist
-        for klassId, freqDist in freqDists.items():
-            logger.info("Klass id " + klassId + ": " + str(freqDist.keys()[:1000]))
+        documentsWithLabel = [(document, label) for label in self.klasses() for url, document in self.documents(klassId).items()]
+        random.shuffle(documentsWithLabel)
+        featuresGenerator = FeatureGenerator(freqDists)
+        testset = apply_features(featuresGenerator, documentsWithLabel[:1000])
+        trainset = apply_features(featuresGenerator, documentsWithLabel[1000:])
+        self.__classifier = NaiveBayesClassifier.train(trainset)
+        logger.info("Accuracy: " + str(nltk.classify.accuracy(self.__classifier, testset)))
+        ref = [label for features, label in testset]
+        test = [self.__classifier.classify(features) for features, cat in testset]
+        logger.info("\n" + ConfusionMatrix(ref, test).pp())
+
 
 
     def __readLogFile(self):
