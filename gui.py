@@ -13,24 +13,34 @@ def urlSortFunction(t):
 class UrlsGrid(Grid):
     def __init__(self, parent):
         Grid.__init__(self, parent, -1)
-        self.CreateGrid(0, 3)
+        self.CreateGrid(0, 4)
         self.SetColLabelValue(0, "URL")
-        self.SetColLabelValue(1, "Count")
+        self.SetColLabelValue(1, "Freq.")
         self.SetColLabelValue(2, "Expanded")
-
-        #self.SetRowLabelValue(0, "1")
-        #self.SetCellValue(0, 0, "A")
-        #self.SetCellValue(0, 1, "A")
+        self.SetColLabelValue(3, "Class")
 
     def update(self, urlsDict):
         i = 0
-        self.AppendRows(len(urlsDict.items()) - self.NumberRows)
-        for url, count in sorted(urlsDict.items(), key=urlSortFunction, reverse=True):
+        list = sorted(urlsDict.items(), key=urlSortFunction, reverse=True)
+        self.AppendRows(len(list) - self.NumberRows)
+        for url, freq in list:
             self.SetRowLabelValue(i, unicode(i+1))
             self.SetCellValue(i, 0, url.getUrl())
-            self.SetCellValue(i, 1, unicode(count))
+            self.SetCellValue(i, 1, unicode(freq))
             self.SetCellValue(i, 2, url.getExpandedUrl())
+            self.SetCellValue(i, 3, ', '.join(map(str, url.documentClasses())))
+            self.SetCellBackgroundColour(i, 3, self.__colour(url.documentClasses()))
             i += 1
+
+    def __colour(self, classList):
+        if len(classList) == 0:
+            return "#FFFFFF"
+        if "short" in classList:
+            return "#A0A0A0"
+        if "medium" in classList:
+            return "#CCCC66"
+        return "#66CC33"
+
 
 class Gui(wx.Frame):
 

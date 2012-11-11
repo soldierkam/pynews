@@ -81,9 +81,10 @@ class TweetIterator(object):
             if self.__isLastFile():
                 raise StopIteration()
             else:
-                self.__file = self.__getNextFile()
+                raise StopIteration()
+                #self.__file = self.__getNextFile()
                 #print "Open next " + str(self.__file)
-                buf = self.__file.read(4)
+                #buf = self.__file.read(4)
         size = struct.unpack('i', buf)[0]
         data = self.__file.read(size)
         tweet = pickle.loads(data)
@@ -216,7 +217,7 @@ class Manager:
 
     def restore(self, filename, lastOnly=False):
         filesNames = self.filenameRead(filename)
-        print u"Open: " + unicode(map(str, filesNames))
+        logger.info(u"Open files: " + unicode('\n'.join(map(str, filesNames))))
         f_in=[]
         filesNames = [filesNames[-1]] if lastOnly else filesNames
         for f in filesNames:

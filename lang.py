@@ -44,7 +44,7 @@ class LangDetect(object):
     language_trigrams = {}
     langid            = LazyCorpusLoader('langid', LangIdCorpusReader, r'(?!\.).*\.txt')
 
-    def __init__(self, languages=['nl', 'en', 'fr', 'de', 'es', 'th', 'pt', 'pl', "id"]):
+    def __init__(self, languages=['nl', 'en', 'fr', 'de', 'es', 'th', 'pt', 'pl', "id", "ru", "it"]):
         for lang in languages:
             self.language_trigrams[lang] = FreqDist()
             for f in self.langid.freqs(fileids=lang+"-3grams.txt"):

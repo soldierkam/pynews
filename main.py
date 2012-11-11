@@ -1,54 +1,79 @@
 # -*- coding: utf-8 *-*
-import time
-import urllib2
 from urllib2 import URLError, HTTPError
-from lang import TwitterLangDetect
-from my_collections import IncDict
-import os
+from nltk import FreqDist
+from clustering import DocumentSizeClustering
+from lang import TwitterLangDetect, LangDetect
 from gui import Gui
 from threading import Event, Semaphore
 from boilerpipe.extract import Extractor
 from Queue import Queue, Empty
-import shelve
+from news import NewsClassificator
 from save import Manager as StreamMgr
 from urlparse import urlparse
 from wx.lib.pubsub.pub import Publisher
 from logger import logger
 from tools import StoppableThread, NothingToDo, stringToDigest
+from user import User
+import shelve, os,cPickle, time, urllib2
 
-ld = TwitterLangDetect()
+tld = TwitterLangDetect()
+ld = LangDetect()
 
 TYPE_MEDIA = u"media"
 TYPE_URL = u"url"
 
+class UrlBuilder():
 
-class User:
+    def __init__(self, urlResolver, freqDist):
+        self.__urlResolver = urlResolver
+        self.__freqDist = freqDist
+        self.__urls = {}
 
-    def __init__(self, user):
-        self.__timezone = user["time_zone"]
-        self.__folowersCount = user["folowers_count"]
-        self.__id = user["id"]
-        self.__lang = user["lang"]
+    def init(self):
+        self.__urlResolver.start()
 
+    def pauseResolver(self):
+        self.__urlResolver.pauseWorkers()
 
+    def resumeResolver(self):
+        self.__urlResolver.continueWorkers()
+
+    def stop(self):
+        self.__urlResolver.stop()
+
+    def __call__(self, *args, **kwargs):
+        urlEntity = args[1]
+        tweet = args[0]
+        u = Url(urlEntity)
+        key = u.getUrlDigest()
+        if self.__urls.has_key(key):
+            u = self.__urls.get(key)
+            u.linkWithTweet(tweet)
+        else:
+            self.__urls[key] = u
+            u.linkWithTweet(tweet)
+            self.__urlResolver.addUrlToQueue(u)
+        self.__freqDist.inc(u)
+        return u
 
 class TweetText:
 
-    def __init__(self, t, url_resolver):
+    def __init__(self, t, urlBuilder):
         self.__id = t["id"]
         self.__text = t["text"]
-        self.__lang = ld.detect(t)
-        self.__url_resolver = url_resolver
+        #self.__lang = tld.detect(t)
         self.__urls = []
-        self.__createUrl__(t['entities']['urls'])
-        if 'media' in t['entities']:
-            self.__createUrl__(t['entities']['media'])
         self.__user = User(t["user"])
+        self.__createUrl__(urlBuilder, t['entities']['urls'])
+        if 'media' in t['entities']:
+            self.__createUrl__(urlBuilder, t['entities']['media'])
 
-    def __createUrl__(self, entities):
+    def __createUrl__(self, urlBuilder, entities):
         for urlEntity in entities:
-            url = Url.buildOrGetExisting(urlEntity, self.__url_resolver)
-            self.__urls.append(url)
+            urlBuilder(self, urlEntity)
+
+    def addUrl(self, url):
+        self.__urls.append(url)
 
     def urls(self):
         return self.__urls
@@ -68,15 +93,30 @@ class TweetText:
     def id(self):
         return self.__id
 
-    def lang(self):
-        return self.__lang
+    #def lang(self):
+    #    return self.__lang
+
+    def isResolved(self):
+        tweetResolved = True
+        for url in self.urls():
+            if not url.isResolvedOrError():
+                tweetResolved = False
+        return tweetResolved
 
     def __str__(self):
-        return u":" + unicode(self.__text) + u"(" + unicode(self.__lang) + u"," + unicode(self.__id) + ")"
+        return u":" + unicode(self.__text) + u"(" + unicode(self.__id) + ")"
+
+class TxtClassificatorWrapper():
+
+    def __init__(self):
+        self.__documentSizeClassificator = DocumentSizeClustering("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/datasets/extractedText.db")
+        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/datasets/googlenews/", doTest=False)
+        #pass
+
+    def classify(self, txt):
+        return self.__documentSizeClassificator.classify(txt), self.__newsClassificator.classify(txt)
 
 class Url:
-
-    __urls = {}
 
     def __init__(self, entity):
         self.__url = entity["url"]
@@ -84,17 +124,18 @@ class Url:
         self.__validateUrl(self.__url, entity)
         self.__validateUrl(self.__expanded, entity)
         self.__text = None
+        self.__error = False
         self.__dnsError = False
+        self.__newsCategory = []
+        self.__lang = None
+        self.__tweets = []
 
-    @staticmethod
-    def buildOrGetExisting(entity, url_resolver):
-        u = Url(entity)
-        if Url.__urls.has_key(u.getUrlDigest()):
-            return Url.__urls.get(u.getUrlDigest())
-        else:
-            Url.__urls[u.getUrlDigest()] = u
-            url_resolver.addUrlToQueue(u)
-        return u
+    def linkWithTweet(self, tweet):
+        self.__tweets.append(tweet)
+        tweet.addUrl(self)
+
+    def tweets(self):
+        return self.__tweets
 
     def __validateUrl(self, url, entity):
         parsed = urlparse(url) if url else None
@@ -117,20 +158,33 @@ class Url:
         return 3 + 7 * self.__url.__hash__()
 
     def getText(self):
+        if self.__text is None:
+            raise ValueError("Text in None")
         return self.__text
 
     def setError(self):
-        self.__text = "ERROR"
+        self.__text = None
+        self.__error = True
 
     def setDnsError(self):
+        self.__text = None
         self.__dnsError = True
 
     def isDnsError(self):
         return self.__dnsError
 
+    def isError(self):
+        return self.__error
+
     def setText(self, text):
+        if text is None:
+            raise ValueError("Text is None!")
         logger.info("Url " + self.__url + " resolved")
         self.__text = text
+        self.__lang = ld.detect(text)
+
+    def ignore(self):
+        return self.isResolvedOrError() and self.__newsCategory is None
 
     def getUrlDigest(self):
         return stringToDigest(self.getUrl())
@@ -142,22 +196,39 @@ class Url:
         return self.__expanded
 
     def isResolved(self):
-        return True if self.__text not in ("ERROR", None) else False
+        return self.__text != None
+
+    def isResolvedOrError(self):
+        return self.isResolved() or self.isError()
+
+    def lang(self):
+        return self.__lang
+
+    def isRoot(self):
+        parsed = urlparse(self.__expanded) if self.__expanded else None
+        if not parsed:
+            raise UrlException(self.__expanded, "Cannot parse")
+        elif parsed.path in ["/", ""] and not parsed.query:
+            return True
+        return False
+
+    def documentClasses(self):
+        return self.__newsCategory
+
+    def setDocumentClasses(self, cat):
+        self.__newsCategory = cat
 
     def __unicode__(self):
-        return u"{URL: " + self.__url + u", exp:" + unicode(self.__expanded) + u"}"
+        return u"{URL: " + unicode(self.__expanded) + u", cat:" + unicode(self.__newsCategory) + u", lang:" + unicode(self.__lang) + u"}"
 
     def __str__(self):
         return self.__unicode__()
 
-class UrlStatistics():
-
-    def __init__(self):
-        pass
 
 class UrlException(Exception):
 
     def __init__(self, entity, msg="Invalid url in entity"):
+        Exception.__init__(self)
         self.__entity = entity
         self.__msg = msg
 
@@ -219,8 +290,8 @@ class UrlResolverCache(StoppableThread):
             msg = self.__queue.get(block=True, timeout=3)
             if type(msg) is PutMsg:
                 resolvedUrl = msg.getUrl()
-                logger.debug("Put resolved url in shelve: " + resolvedUrl.getUrl())
-                self.__shelve[resolvedUrl.getUrlDigest()] = {"text": resolvedUrl.getText(), "url":resolvedUrl.getUrl()}
+                logger.debug("Put extracted url text in shelve: " + resolvedUrl.getUrl())
+                self.__shelve[resolvedUrl.getUrlDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(), "url": resolvedUrl.getUrl()}
                 self.__size += 1
             elif type(msg) is GetMsg:
                 if self.__shelve.has_key(msg.digest()):
@@ -234,7 +305,7 @@ class UrlResolverCache(StoppableThread):
             return
 
     def hitRate(self):
-        return self.__hits * 100 / self.__requests
+        return self.__hits * 100 / self.__requests if self.__requests != 0 else 0.0
 
     def atEnd(self):
         StoppableThread.atEnd(self)
@@ -243,14 +314,15 @@ class UrlResolverCache(StoppableThread):
 
 class UrlResolverWorker(StoppableThread):
 
-    def __init__(self, queue, mgr, id):
-        StoppableThread.__init__(self, "UrlResolverWorker" + str(id))
+    def __init__(self, mgr, queue, cache, id):
+        StoppableThread.__init__(self, self.__class__.__name__ + str(id))
         self.__queue = queue
         self.__mgr = mgr
+        self.__cache = cache
 
     def runPart(self):
         url = None
-        while url == None:
+        while url is None:
             try:
                 url = self.__queue.get(True, 3)
             except Empty:
@@ -260,30 +332,34 @@ class UrlResolverWorker(StoppableThread):
         cachable = True
         while tryNumber < 3 and not self.isStopping():
             try:
-                urlStr = url.getExpandedUrl() or url.getUrl()
+                #urlStr = url.getExpandedUrl() or url.getUrl()
                 extractor = Extractor(extractor='ArticleExtractor', url=url.getUrl())
                 text = extractor.getText()
+                if text is None:
+                    raise ValueError("Extracted text is None")
                 url.setText(text)
-                self.__mgr.addTextToStore(url)
+                self.__cache.put(url)
+                self.__mgr.afterResolveUrl(url)
                 if tryNumber > 0:
-                    logger.info(self.getThreadName() + ": finally resolved url " + unicode(url))
+                    logger.info("finally resolved url " + unicode(url))
                 break
             except HTTPError as err:
-                logger.error(self.getThreadName() + ": cannot resolve url " + str(url) + ": " + str(err))
+                logger.error("cannot resolve url " + str(url) + ": " + str(err))
                 tryNumber += 1
             except URLError as err:
                 #DNS error
                 cachable = False
-                logger.error(self.getThreadName() + ": cannot resolve url " + str(url) + ": " + str(err))
+                logger.error("cannot resolve url " + str(url) + ": " + str(err))
                 tryNumber += 10
             except BaseException as err:
-                logger.error(self.getThreadName() + ": cannot resolve url " + str(url) + ": " + str(err))
+                logger.error("cannot resolve url " + str(url) + ": " + str(err))
                 tryNumber += 1
         else:
-            logger.error(self.getThreadName() + ": drop resolving url " + unicode(url))
+            logger.error("drop resolving url " + unicode(url))
             if cachable:
                 url.setError()
-                self.__mgr.setError(url)
+                self.__cache.put(url)
+                self.__mgr.afterResolveUrl(url)
             else:
                 Publisher.sendMessage("model.pause")
                 if not url.isDnsError():
@@ -304,12 +380,13 @@ class UrlResolverWorker(StoppableThread):
 
 class UrlResolverManager():
 
-    def __init__(self, filename):
+    def __init__(self, filename, tweetResolverListener):
         self.__queue = Queue(maxsize=200)
         self.__workers = []
+        self.__tweetResolverListener = tweetResolverListener
         self.__resolverCache = UrlResolverCache(filename)
         for i in range(0,3):
-            self.__workers.append(UrlResolverWorker(self.__queue, self, i))
+            self.__workers.append(UrlResolverWorker(self, self.__queue, self.__resolverCache, i))
         self.__lastReportedQueueSize = None
 
     def start(self):
@@ -341,53 +418,89 @@ class UrlResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            url.setText(cachedValue["text"])
+            if cachedValue["text"]:
+                url.setText(cachedValue["text"])
+            else:
+                url.setError()
+            self.afterResolveUrl(url)
             return
-        self.__queue.put(url, timeout=60*5)
+        self.__queue.put(url)
         s = self.__queue.qsize()
         if s % 20 == 0 and s > 20 and self.__lastReportedQueueSize != s:
             self.__lastReportedQueueSize = s
             logger.warning("Queue size is too big: " + unicode(s))
 
-    def addTextToStore(self, url):
-        self.__resolverCache.put(url)
+    def afterResolveUrl(self, url):
+        self.__notifyUrlResolved(url)
 
-    def setError(self, url):
-        self.__resolverCache.put(url)
+    def __notifyUrlResolved(self, url):
+        for tweet in url.tweets():
+            if tweet.isResolved():
+                self.__tweetResolverListener.tweetResolved(tweet)
 
-class FeatureGenerator():
+class ResolvedTweetQueue(StoppableThread):
 
-    def __init__(self):
-        self.__data = {}
+    def __init__(self, dir, classificator):
+        StoppableThread.__init__(self, self.__class__.__name__)
+        self.__queue = Queue()
+        self.__classificator = classificator
+        self.__tweets = []
+        self.__dir = dir
+        self.start()
 
-    def generateFeatures(self, tweetObj):
-        user = tweetObj.user()
-        for url in tweetObj.urls():
-            elem = self.getElem()
+    def tweetResolved(self, tweet):
+        self.__queue.put(tweet)
 
+    def runPart(self):
+        try:
+            tweet = self.__queue.get(block=True, timeout=3)
+            url = tweet.urls()[0]
+            if url.isError():
+                logger.info(u"Tweet bad: wrong url: " + unicode(tweet) + u" " + unicode(url))
+                return
+            url.setDocumentClasses(self.__classificator.classify(url.getText()))
+            if url.isRoot() or url.lang() != "en" or "short" in url.documentClasses():
+                logger.info(u"Tweet bad: " + unicode(tweet) + u" " + unicode(url))
+                return
+            logger.info(u"Tweet good: " + unicode(tweet) + u" " + unicode(url))
+            logger.info(u"URL: " + unicode(url))
+            self.__tweets.append(tweet)
+            if len(self.__tweets) % 100 == 99:
+                self.__store()
+            return
+        except Empty:
+            return
 
-    def getElem(self, url):
-        key = url.getUrlDigest()
-        if self.__data.has_key(key):
-            return self.__data[key]
-        else:
-            elem = {}
-            elem[""]
-            self.__data[key] = elem
-            return elem
+    def atEnd(self):
+        StoppableThread.atEnd(self)
+        self.__store()
+
+    def __tweetWithUrlToRoot(self, tweet):
+        for u in tweet.urls():
+            if u.isRoot():
+                return True
+        return False
+
+    def __store(self):
+        file = os.path.join(self.__dir, "resolved_tweets.cpickle")
+        os.remove(file)
+        outputFile = open(file, "w")
+        cPickle.dump(self.__tweets, outputFile)
+        outputFile.close()
 
 class Model(StoppableThread):
 
     def __init__(self, gui, stream, cacheDir):
         StoppableThread.__init__(self, "Model")
         self.__stream= stream
-        self.__url_counter = IncDict()
-        self.__url_resolver = UrlResolverManager(cacheDir)
         self.__gui = gui;
-        self.__url_resolver.start()
+        self.__urlFreq = FreqDist()
+        self.__tweetResolvedListener = ResolvedTweetQueue(cacheDir, TxtClassificatorWrapper())
+        self.__urlResolver = UrlResolverManager(os.path.join(cacheDir, "cache"), self.__tweetResolvedListener)
+        self.__urlBuilder = UrlBuilder(self.__urlResolver, self.__urlFreq)
         self.__refreshGui = Event()
-        Publisher.subscribe(self.pauseJob, "model.pause")
-        Publisher.subscribe(self.continueJob, "model.start")
+        Publisher.subscribe(self.onPauseJob, "model.pause")
+        Publisher.subscribe(self.onResumeJob, "model.start")
         Publisher.subscribe(self.onRefreshGui, "model.refreshGui")
         self.doPauseJob()
         self.start()
@@ -395,25 +508,29 @@ class Model(StoppableThread):
     def onRefreshGui(self, msg):
         self.__refreshGui.set()
 
-    def pauseJob(self, msg):
+    def onPauseJob(self, msg):
         self.doPauseJob()
 
     def doPauseJob(self):
         StoppableThread.pauseJob(self)
-        self.__url_resolver.pauseWorkers()
+        self.__urlBuilder.pauseResolver()
         Publisher.sendMessage("model.paused")
 
-    def continueJob(self, msg):
+    def onResumeJob(self, msg):
         self.doContinueJob()
 
     def doContinueJob(self):
         StoppableThread.continueJob(self)
-        self.__url_resolver.continueWorkers()
+        self.__urlBuilder.resumeResolver()
         Publisher.sendMessage("model.started")
+
+    def atBegin(self):
+        logger.info("Preparing model...")
+        self.__urlBuilder.init()
+        logger.info("Start analyzing tweets")
 
     def runPart(self):
         iter = self.__stream.__iter__()
-        featuresGenerator = FeatureGenerator()
         for s in iter:
             if self.isStopping():
                 logger.info("Model end")
@@ -424,20 +541,18 @@ class Model(StoppableThread):
 
             if u'text' in s and s[u'retweet_count'] > 20:
                 try:
-                    tweet = TweetText(s, self.__url_counter, self.__url_resolver)
-                    features = featuresGenerator.generateFeatures(tweet)
-                    retweeted = TweetText(s["retweeted_status"], self.__url_counter, self.__url_resolver) if "retweeted_status" in s else None
-                    features = featuresGenerator.generateFeatures(retweeted)
+                    tweet = TweetText(s, self.__urlBuilder)
+                    retweeted = TweetText(s["retweeted_status"], self.__urlBuilder) if "retweeted_status" in s else None
                 except UrlException as e:
-                    logger.exception("Cannot build url")
+                    logger.warn("Cannot build url: " + str(e))
                     continue
-                logger.info(unicode(tweet))
-                logger.info(unicode(retweeted))
+                #logger.info(unicode(tweet))
+                #logger.info(unicode(retweeted))
                 if self.__refreshGui.isSet():
                     self.__refreshGui.clear()
                     data = {}
-                    data["urls"] = self.__url_counter
-                    data["cache"] = self.__url_resolver.cacheHitRate()
+                    data["urls"] = {sample: self.__urlFreq.freq(sample) for sample in set(self.__urlFreq.samples())}
+                    data["cache"] = self.__urlResolver.cacheHitRate()
                     data["position"] = iter.position()
                     data["position_end"] = iter.count()
                     data["current_file_c"] = iter.currentFile()
@@ -447,14 +562,15 @@ class Model(StoppableThread):
 
     def stop(self):
         StoppableThread.stop(self)
-        self.__url_resolver.stop()
+        self.__urlBuilder.stop()
+        self.__tweetResolvedListener.stop()
 
 def main():
     mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/tweets"
     logger.info("Start app")
     gui = Gui()
     mgr = StreamMgr()
-    model = Model(gui, stream=mgr.restore(mainDir), cacheDir=os.path.join(mainDir, "cache"))
+    model = Model(gui, stream=mgr.restore(mainDir), cacheDir=mainDir)
     gui.run()
     model.stop()
     logger.info("Exit app")

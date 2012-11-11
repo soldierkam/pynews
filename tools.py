@@ -52,7 +52,6 @@ class StoppableThread(Thread):
 
     def __init__(self, name):
         Thread.__init__(self, name=name)
-        self.__name = name
         self.__stop = Event()
         self.__pauseEvent = Event()
 
@@ -80,15 +79,12 @@ class StoppableThread(Thread):
                     continue
                 self.runPart()
             except NothingToDo:
-                logger.info(self.__name + ": nothing to do")
+                logger.info("nothing to do")
                 break
             except BaseException as exc:
-                logger.exception(self.__name + ": error")
+                logger.exception("error")
                 break
         self.atEnd()
-
-    def getThreadName(self):
-        return self.__name
 
     def runPart(self):
         pass
@@ -97,7 +93,7 @@ class StoppableThread(Thread):
         pass
 
     def atEnd(self):
-        logger.info(self.__name + ": exiting...")
+        logger.info("exiting...")
         pass
 
 def stringToDigest(string):
