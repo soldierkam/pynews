@@ -208,9 +208,7 @@ class Url:
         parsed = urlparse(self.__expanded) if self.__expanded else None
         if not parsed:
             raise UrlException(self.__expanded, "Cannot parse")
-        elif parsed.path in ["/", ""] and not parsed.query:
-            return True
-        return False
+        return parsed.path in ["/", ""] and not parsed.query
 
     def documentClasses(self):
         return self.__newsCategory
