@@ -2,6 +2,9 @@ from nltk import PorterStemmer, FreqDist
 from nltk.classify import apply_features
 from nltk.classify.svm import SvmClassifier
 from nltk.corpus import stopwords, LazyCorpusLoader, CategorizedPlaintextCorpusReader
+from numpy.distutils.system_info import blas_mkl_info
+import operator
+from google_rss import HEADLINES, SPOTLIGHT, NATION
 from logger import logger
 from nltk import NaiveBayesClassifier, ConfusionMatrix
 import random, nltk
@@ -14,47 +17,62 @@ newsCorpus = LazyCorpusLoader('news_corpus', CategorizedPlaintextCorpusReader, '
 
 class FeatureGenerator():
 
-    def __init__(self, freqDists):
-        self.__words = set()
-        for label, fd in freqDists.items():
-            for w in fd.keys()[:1000]:
-                self.__words.add(w)
+    def __init__(self, freqDists, featureFd):
+        labels = freqDists.keys()
+        featureToMaxRatio = {feature: 0 for feature in featureFd.samples()}
+        for feature in featureFd.samples():
+            featureRatio = []
+            for fd1 in freqDists.values():
+                featureFrequencyOutsideFd1 = 0
+                for fd2 in freqDists.values():
+                    if fd2 is not fd1:
+                        featureFrequencyOutsideFd1 += fd2.freq(feature)
+                featureRatio.append(fd1.freq(feature) / featureFrequencyOutsideFd1 if featureFrequencyOutsideFd1 != 0 else 0)
+            featureToMaxRatio[feature] = max(featureRatio)
+        bestFeatures = sorted(featureToMaxRatio.iteritems(), key=operator.itemgetter(1), reverse=True)
+        logger.info(u"Best features: " + unicode(bestFeatures[:3000]))
+        self.__features = [item[0] for item in bestFeatures[:3000]]
+
 
     def __call__(self, document):
-        doc = [w.lower() for w in document.split()]
-        return dict([("contains(%s)" % w, w in doc) for w in self.__words])
-
-
+        tokens = [t.lower() for t in nltk.wordpunct_tokenize(document)]
+        doc = tokens#[tokens + nltk.bigrams(tokens)]
+        return dict([("contains(%s)" % str(f), f in doc) for f in self.__features])
 
 class NewsClassificator():
 
-    def __init__(self, dir, doTest = True):
+    def __init__(self, dir, doTest = True, ignoreKlass = []):
         logger.info("Start building " + self.__class__.__name__)
         self.__dir = dir
         self.__filenameToUrl = self.__readLogFile()
         self.__stemmer = PorterStemmer()
         freqDists = {}
         ignore = stopwords.words('english')
-        for klassId in self.__klasses():
+        featureFd = FreqDist()
+        for klassId in self.__klasses(ignoreKlass):
             freqDist = FreqDist()
             for url, txt in self.__documents(klassId).items():
-                for part in txt.split():
-                    part = part.lower()
+                txt = [ self.__stemmer.stem(token.lower()) for token in nltk.wordpunct_tokenize(txt)]
+                for part in txt:
                     if part.isalnum() and part not in ignore:
-                        freqDist.inc(self.__stemmer.stem(part))
+                        freqDist.inc(part)
+                        featureFd.inc(part)
+                #for bigram in nltk.bigrams(txt):
+                #    freqDist.inc(bigram)
+                #    featureFd.inc(bigram)
             freqDists[klassId] = freqDist
-        documentsWithLabel = [(document, label) for label in self.__klasses() for url, document in self.__documents(label).items()]
+        documentsWithLabel = [(document, label) for label in self.__klasses(ignoreKlass) for url, document in self.__documents(label).items()]
         random.shuffle(documentsWithLabel)
-        self.__featuresGenerator = FeatureGenerator(freqDists)
+        self.__featuresGenerator = FeatureGenerator(freqDists, featureFd)
         testset = apply_features(self.__featuresGenerator, documentsWithLabel[:2000])
         trainset = apply_features(self.__featuresGenerator, documentsWithLabel)
         self.__classifier = NaiveBayesClassifier.train(trainset)
-        logger.info("Classifier learned")
+        logger.info(u"Classifier learned (set size=" + unicode(len(trainset)) + u")")
         if doTest:
-            logger.info("Accuracy: " + str(nltk.classify.accuracy(self.__classifier, testset)))
             ref = [label for features, label in testset]
             test = [self.__classifier.classify(features) for features, cat in testset]
             logger.info("\n" + ConfusionMatrix(ref, test).pp())
+            #logger.info("Accuracy: " + str(nltk.classify.accuracy(self.__classifier, testset)))
             self.__classifier.show_most_informative_features(n=30)
 
     def classify(self, document):
@@ -83,12 +101,12 @@ class NewsClassificator():
                 fd.close()
         return results
 
-    def __klasses(self):
+    def __klasses(self, ignoreKlass = []):
         results = []
         for dirEntry in os.listdir(self.__dir):
-            if os.path.isdir(os.path.join(self.__dir, dirEntry)):
+            if os.path.isdir(os.path.join(self.__dir, dirEntry)) and dirEntry not in ignoreKlass:
                 results.append(dirEntry)
         return results
 
 if __name__ == "__main__":
-    nc = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/googlenews/")
+    nc = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/datasets/googlenews/", doTest=True, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])

@@ -21,25 +21,30 @@ from logger import logger
 __author__ = 'soldier'
 
 
-#h - specifies the top headlines topic
-HEADLINES="h"
 #w - specifies the world topic
 WORLD="w"
 #b - specifies the business topic
-NATION="n"
+BUSINESS="n"
 #n - specifies the nation topic
-SCI_TECH="t"
+NATION="n"
 #t - specifies the science and technology topic
-ELECTIONS="el"
+#SCI_TECH="t"
+TECHNOLOGY = "tc"
+SCIENCE = "snc"
 #el - specifies the elections topic
-POLITICS="p"
+ELECTIONS="el"
 #p - specifies the politics topic
-ENTERTAINMENT="e"
+POLITICS="p"
 #e - specifies the entertainment topic
-SPORT="s"
+ENTERTAINMENT="e"
 #s - specifies the sports topic
-HEALTH="m"
+SPORT="s"
 #m - specifies the health topic
+HEALTH="m"
+
+#h - specifies the top headlines topic
+HEADLINES="h"
+SPOTLIGHT = "ir"
 
 class GoogleNewsUrl():
 
@@ -64,7 +69,7 @@ class RssAnalyzer():
         self.__downloader = UrlDownloaderController(dir)
         self.__pollers = []
         for lang in ["us", "uk", "au", "en_ca"]:
-            for topic in [HEADLINES, WORLD, NATION, SCI_TECH, ELECTIONS, POLITICS, ENTERTAINMENT, SPORT, HEALTH]:
+            for topic in [HEADLINES, WORLD, NATION, SCIENCE, TECHNOLOGY, ELECTIONS, POLITICS, ENTERTAINMENT, SPORT, HEALTH, BUSINESS]:
                 url = GoogleNewsUrl().setEdition(lang).setTopic(topic).build()
                 p = RssPoller(url, topic, lang, self)
                 self.__pollers.append(p)
