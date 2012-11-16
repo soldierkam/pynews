@@ -109,4 +109,4 @@ class NewsClassificator():
         return results
 
 if __name__ == "__main__":
-    nc = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/datasets/googlenews/", doTest=True, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])
+    nc = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/datasets/googlenews3/", doTest=True, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])

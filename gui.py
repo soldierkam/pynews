@@ -1,7 +1,12 @@
+# -*- coding: utf-8 *-*
+# import simplejson
+from logger import logger
+
 __author__ = 'soldier'
 
+from wx import grid
 from  wx.grid import Grid
-import wx
+import wx, simplejson
 from wx.lib.pubsub.pub import Publisher
 
 ID_START_PAUSE = wx.NewId()
@@ -13,26 +18,38 @@ def urlSortFunction(t):
 class UrlsGrid(Grid):
     def __init__(self, parent):
         Grid.__init__(self, parent, -1)
-        self.CreateGrid(0, 4)
+        self.__urls = []
+        self.CreateGrid(0, 5)
         self.SetColLabelValue(0, "URL")
-        self.SetColLabelValue(1, "Freq.")
+        self.SetColLabelValue(1, "Freq. (‰)")
         self.SetColLabelValue(2, "Expanded")
-        self.SetColLabelValue(3, "Class")
+        self.SetColLabelValue(3, "Lang")
+        self.SetColLabelValue(4, "Class")
+        self.Bind(grid.EVT_GRID_CELL_LEFT_DCLICK, self._OnLinkClicked)
 
     def update(self, urlsDict):
         i = 0
         list = sorted(urlsDict.items(), key=urlSortFunction, reverse=True)
         self.AppendRows(len(list) - self.NumberRows)
+        self.__urls = []
         for url, freq in list:
             self.SetRowLabelValue(i, unicode(i+1))
             self.SetCellValue(i, 0, url.getUrl())
-            self.SetCellValue(i, 1, unicode(freq))
+            self.SetCellValue(i, 1, unicode(freq * 1000))
             self.SetCellValue(i, 2, url.getExpandedUrl())
-            self.SetCellValue(i, 3, ', '.join(map(str, url.documentClasses())))
-            self.SetCellBackgroundColour(i, 3, self.__colour(url.documentClasses()))
+            self.SetCellValue(i, 3, str(url.lang()))
+            self.SetCellBackgroundColour(i, 3, self.__colourForLang(url.lang()))
+            self.SetCellValue(i, 4, ', '.join(map(str, url.documentClasses())))
+            self.SetCellBackgroundColour(i, 4, self.__colourForClass(url.documentClasses()))
+            self.__urls.append(url)
             i += 1
 
-    def __colour(self, classList):
+    def _OnLinkClicked(self, event):
+        r = event.GetRow()
+        rowModel = self.__urls[r]
+        logger.info(simplejson.dumps(rowModel.dump(), indent="\t"))
+
+    def __colourForClass(self, classList):
         if len(classList) == 0:
             return "#FFFFFF"
         if "short" in classList:
@@ -41,6 +58,10 @@ class UrlsGrid(Grid):
             return "#CCCC66"
         return "#66CC33"
 
+    def __colourForLang(self, lang):
+        if "en" == lang:
+            return "#66CC33"
+        return "#FFFFFF"
 
 class Gui(wx.Frame):
 
