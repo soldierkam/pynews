@@ -1,5 +1,6 @@
 # -*- coding: utf-8 *-*
 import os
+import shelve
 from nltk import FreqDist
 import tweepy
 import twitter
@@ -12,8 +13,8 @@ from url import UrlSyncResolverManager, UrlBuilder
 class UserStore():
 
     def __init__(self, dir):
-        self.__friendsCache = {}#shelve.open(os.path.join(dir, "friends.db"), "w")
-        self.__timelineCache = {}#shelve.open(os.path.join(dir, "timeline.db"), "w")
+        self.__friendsCache = shelve.open(os.path.join(dir, "friends.db"), "c")
+        self.__timelineCache = shelve.open(os.path.join(dir, "timeline.db"), "c")
         self.__auth = OAuthClient(os.environ["consumer_key"], os.environ["consumer_secret"])
 
     def getFriendsIds(self, userObj=None, userId=None):
@@ -34,7 +35,7 @@ class UserStore():
             raise ValueError("Missing user id")
         return CacheOp(self.__timelineCache, userId, self.__getTimeline).get()
 
-    def __getTimeline(self, user_id, include_rts=True, include_entities=True):
+    def __getTimeline(self, user_id, include_rts=True, include_entities=True, count=200):
         key, secret = self.__auth.accessToken()
         logger.info("Fetch timeline for " + str(user_id))
         api = twitter.Api(access_token_key=key, access_token_secret=secret)
@@ -48,7 +49,7 @@ class UserStore():
 
         if include_entities:
             parameters['include_entities'] = 1
-
+        parameters['count'] = count
         json = api._FetchUrl(url, parameters=parameters)
         return api._ParseAndCheckTwitter(json)
 
@@ -95,6 +96,6 @@ class UserMgr():
 if __name__ == "__main__":
     mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/user"
     mgr = UserMgr(mainDir)
-    for userId in ["soldierkam"]:
+    for userId in ["soldierkam", "4iHD"]:
         mgr.doJob(userId)
     mgr.close()

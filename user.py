@@ -19,6 +19,9 @@ class User:
         values["lang"] = self.__lang
         return values
 
+    def friendsCount(self):
+        return self.__followersCount
+
     def __str__(self):
         return u"{User:" + unicode(self.__id) + u",lang:" + unicode(self.__lang) + u",followers:" + unicode(self.__followersCount) + u")"
 

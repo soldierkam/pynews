@@ -4,7 +4,7 @@ from clustering import DocumentSizeClustering
 from lang import TwitterLangDetect
 from gui import Gui
 from threading import Event
-from Queue import Queue, Empty
+from Queue import Queue, Empty, Full
 from news import NewsClassificator
 from save import Manager as StreamMgr
 from wx.lib.pubsub.pub import Publisher
@@ -19,12 +19,14 @@ tld = TwitterLangDetect()
 class TxtClassificatorWrapper():
 
     def __init__(self):
-        self.__documentSizeClassificator = DocumentSizeClustering("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/datasets/extractedText.db")
-        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/datasets/googlenews/", doTest=False)
-        #pass
+        if "fake_run" in os.environ:
+            return
+        self.__documentSizeClassificator = DocumentSizeClustering("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db")
+        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews/", doTest=False)
 
     def classify(self, txt):
-        #return []
+        if "fake_run" in os.environ:
+            return ["long", "p"]
         return self.__documentSizeClassificator.classify(txt), self.__newsClassificator.classify(txt)
 
 class ResolvedTweetQueue(StoppableThread):
@@ -33,7 +35,7 @@ class ResolvedTweetQueue(StoppableThread):
         StoppableThread.__init__(self, self.__class__.__name__)
         self.__queue = Queue()
         self.__classificator = classificator
-        self.__tweets = []
+        self.__urls = []
         self.__dir = dir
         self.start()
 
@@ -43,19 +45,19 @@ class ResolvedTweetQueue(StoppableThread):
     def runPart(self):
         try:
             tweet = self.__queue.get(block=True, timeout=3)
-            url = tweet.urls()[0]
-            if url.isError():
-                logger.info(u"Tweet bad: wrong url: " + unicode(tweet) + u" " + unicode(url))
-                return
-            url.setDocumentClasses(self.__classificator.classify(url.getText()))
-            if url.isRoot() or url.lang() != "en" or "short" in url.documentClasses():
-                logger.info(u"Tweet bad: " + unicode(tweet) + u" " + unicode(url))
-                return
-            logger.info(u"Tweet good: " + unicode(tweet) + u" " + unicode(url))
-            logger.info(u"URL: " + unicode(url))
-            self.__tweets.append(tweet)
-            if len(self.__tweets) % 100 == 99:
-                self.__store()
+            for url in tweet.urls():
+                if url.isError():
+                    logger.info(u"Tweet bad: wrong url: " + unicode(tweet) + u" " + unicode(url))
+                    break
+                url.setDocumentClasses(self.__classificator.classify(url.getText()))
+                if url.isRoot() or url.lang() != "en" or "short" in url.documentClasses():
+                    logger.info(u"Tweet bad: " + unicode(tweet) + u" " + unicode(url))
+                    break
+                logger.info(u"Tweet good: " + unicode(tweet) + u" " + unicode(url))
+                logger.info(u"URL: " + unicode(url))
+                self.__urls.append(url)
+                if len(self.__urls) % 100 == 99:
+                    self.__store()
             return
         except Empty:
             return
@@ -63,6 +65,16 @@ class ResolvedTweetQueue(StoppableThread):
     def atEnd(self):
         StoppableThread.atEnd(self)
         self.__store()
+
+    def finalTweets(self):
+        tweets = set()
+        for url in self.__urls:
+            for tweet in url.tweets():
+                tweets.add(tweet)
+        return tweets
+
+    def finalUrls(self):
+        return self.__urls
 
     def __tweetWithUrlToRoot(self, tweet):
         for u in tweet.urls():
@@ -74,18 +86,19 @@ class ResolvedTweetQueue(StoppableThread):
         file = os.path.join(self.__dir, "resolved_tweets.cpickle")
         os.remove(file)
         outputFile = open(file, "w")
-        cPickle.dump(self.__tweets, outputFile)
+        cPickle.dump(self.finalTweets(), outputFile)
         outputFile.close()
 
 class Model(StoppableThread):
 
     def __init__(self, gui, stream, cacheDir):
         StoppableThread.__init__(self, "Model")
-        self.__stream= stream
+        self.__iter = stream.__iter__()
+        self.__elem = None
         self.__gui = gui;
         self.__urlFreq = FreqDist()
-        self.__tweetResolvedListener = ResolvedTweetQueue(cacheDir, TxtClassificatorWrapper())
-        self.__urlResolver = UrlResolverManager(os.path.join(cacheDir, "cache"), self.__tweetResolvedListener)
+        self.__tweetResolvedListener = ResolvedTweetQueue(os.path.join(cacheDir, "tweets"), TxtClassificatorWrapper())
+        self.__urlResolver = UrlResolverManager(os.path.join(cacheDir, "urlResolverCache.db"), self.__tweetResolvedListener)
         self.__urlBuilder = UrlBuilder(self.__urlResolver, self.__urlFreq)
         self.__refreshGui = Event()
         Publisher.subscribe(self.onPauseJob, "model.pause")
@@ -101,7 +114,7 @@ class Model(StoppableThread):
         self.doPauseJob()
 
     def doPauseJob(self):
-        StoppableThread.pauseJob(self)
+        self.pauseJob()
         self.__urlBuilder.pauseResolver()
         Publisher.sendMessage("model.paused")
 
@@ -109,7 +122,7 @@ class Model(StoppableThread):
         self.doContinueJob()
 
     def doContinueJob(self):
-        StoppableThread.continueJob(self)
+        self.continueJob()
         self.__urlBuilder.resumeResolver()
         Publisher.sendMessage("model.started")
 
@@ -119,35 +132,38 @@ class Model(StoppableThread):
         logger.info("Start analyzing tweets")
 
     def runPart(self):
-        iter = self.__stream.__iter__()
-        for s in iter:
-            if self.isStopping():
-                logger.info("Model end")
-                return False
+        try:
+            s = self.__elem or self.__iter.next()
+            self.__elem = s
             if self.isPaused():
                 time.sleep(1)
                 return
 
-            if u'text' in s and s[u'retweet_count'] > 20:
+            if u'text' in s:
                 try:
                     tweet = TweetText(s, self.__urlBuilder)
                     retweeted = TweetText(s["retweeted_status"], self.__urlBuilder) if "retweeted_status" in s else None
                 except UrlException as e:
                     logger.warn("Cannot build url: " + str(e))
-                    continue
-                #logger.info(unicode(tweet))
-                #logger.info(unicode(retweeted))
-                if self.__refreshGui.isSet():
-                    self.__refreshGui.clear()
-                    data = {}
-                    data["urls"] = {sample: self.__urlFreq.freq(sample) for sample in set(self.__urlFreq.samples())}
-                    data["cache"] = self.__urlResolver.cacheHitRate()
-                    data["position"] = iter.position()
-                    data["position_end"] = iter.count()
-                    data["current_file_c"] = iter.currentFile()
-                    data["last_file_c"] = iter.filesCount()
-                    Publisher.sendMessage("update.urls", data=data)
-        raise NothingToDo()
+            self._doSmthElse()
+            self.__elem = None
+        except Full:
+            return
+        except StopIteration:
+            raise NothingToDo()
+
+    def _doSmthElse(self):
+        if self.__refreshGui.isSet():
+            logger.info("Send data to GUI")
+            self.__refreshGui.clear()
+            data = {}
+            data["urls"] = {urlSample: [self.__urlFreq.freq(urlSample), urlSample in self.__tweetResolvedListener.finalUrls()] for urlSample in set(self.__urlFreq.samples())}
+            data["cache"] = self.__urlResolver.cacheHitRate()
+            data["position"] = self.__iter.position()
+            data["position_end"] = self.__iter.count()
+            data["current_file_c"] = self.__iter.currentFile()
+            data["last_file_c"] = self.__iter.filesCount()
+            Publisher.sendMessage("update.urls", data=data)
 
     def stop(self):
         StoppableThread.stop(self)
@@ -156,10 +172,11 @@ class Model(StoppableThread):
 
 def main():
     mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream"
+    tweetsDir = os.path.join(mainDir, "tweets")
     logger.info("Start app")
     gui = Gui()
-    mgr = StreamMgr()
-    model = Model(gui, stream=mgr.restore(mainDir), cacheDir=mainDir)
+    mgr = StreamMgr(tweetsDir)
+    model = Model(gui, stream=mgr.restore(lastOnly=True), cacheDir=mainDir)
     gui.run()
     model.stop()
     logger.info("Exit app")

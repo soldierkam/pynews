@@ -38,13 +38,10 @@ class GetMsg(object):
         self.__mutex.acquire()
         return self.__response
 
-
-
-
 class UrlResolverCache(StoppableThread):
 
     def __init__(self, filename):
-        StoppableThread.__init__(self, "UrlResolverCache")
+        StoppableThread.__init__(self)
         self.__filename= filename
         self.__queue = Queue()
         self.__hits = 0
@@ -157,7 +154,7 @@ class UrlResolver():
 class UrlStoppableResolver(UrlResolver):
 
     def __init__(self, url, mgr, cache, worker):
-        UrlResolver.__init__(url, mgr, cache)
+        UrlResolver.__init__(self, url, mgr, cache)
         self.__worker = worker
 
     def isStopping(self):
@@ -176,7 +173,7 @@ class UrlResolverWorker(StoppableThread):
         while url is None:
             try:
                 url = self.__queue.get(True, 3)
-                resolver = UrlResolver(url, self.__mgr, self.__cache)
+                resolver = UrlStoppableResolver(url, self.__mgr, self.__cache, self)
                 putInQueue = resolver.resolve()
                 if putInQueue:
                     self.__queue.put(url)
@@ -215,8 +212,8 @@ class UrlResolverManager():
         for worker in self.__workers:
             worker.continueJob()
 
-    #def cacheHitRate(self):
-    #    return self.__resolverCache.hitRate()
+    def cacheHitRate(self):
+        return self.__resolverCache.hitRate()
 
     def addUrlToQueue(self, url):
         cachedValue = self.__resolverCache.get(url)
@@ -229,7 +226,7 @@ class UrlResolverManager():
                 url.setError()
             self.afterResolveUrl(url)
             return
-        self.__queue.put(url)
+        self.__queue.put(url, timeout=3)
         s = self.__queue.qsize()
         if s % 20 == 0 and s > 20 and self.__lastReportedQueueSize != s:
             self.__lastReportedQueueSize = s
@@ -310,6 +307,8 @@ class UrlBuilder():
             self.__urls[key] = u
             u.linkWithTweet(tweet)
             self.__urlResolver.addUrlToQueue(u)
+        if not isinstance(u, Url):
+            raise ValueError(u"Wrong object type " + unicode(u))
         self.__freqDist.inc(u)
         return u
 
@@ -338,6 +337,10 @@ class Url:
         valuesInTime = [tweet.retweets() for tweet in self.tweets()]
         return max(valuesInTime) if len(valuesInTime) > 0 else 0
 
+    def mark(self):
+        friendsSum = sum([tweet.user().friendsCount() for tweet in self.tweets()])
+        return self.retweetsCount() + friendsSum
+
     def __validateUrl(self, url, entity):
         parsed = urlparse(url) if url else None
         if not parsed:
@@ -353,12 +356,13 @@ class Url:
         values = {}
         values["url"] = self.__expanded
         values["cat"] = self.__newsCategory
+        values["text"] = self.__text
         values["lang"] = self.__lang
         values["tweets"] = [t.dump() for t in self.__tweets]
         return values
 
     def __eq__(self, other):
-        if other:
+        if other and isinstance(other, Url):
             return self.__url == other.__url
         else:
             return False

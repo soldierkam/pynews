@@ -1,4 +1,6 @@
 # -*- coding: utf-8 *-*
+import shelve
+
 __author__ = 'soldier'
 
 import sys
@@ -15,40 +17,83 @@ from logger import logger
 from Queue import Queue, Full, Empty
 from threading import Thread, Event
 from tools import RateMonitor
+from dateutil import parser
 
-filenamePattern = re.compile(r"s=([^,]+),c=([^,]+).tweets")
+
+filenameSCPattern = re.compile(r"s=([^,]+),c=([^,]+).tweets")
+filenameSCEPattern = re.compile(r"s=([^,]+),c=([^,]+),e=([^,]+).tweets")
+
+def filenameToKey(filename):
+    return os.path.basename(filename)
+
+def storeFileInfo(infoLog, filename, startTime, count, endTime):
+    key = filenameToKey(filename)
+    value = {"start" : startTime, "tweets_count": count, "end" : endTime}
+    logger.info("Save " + str(value) + " to " + str(key))
+    infoLog[key] = value
 
 class TweetIterator(object):
 
-    def __init__(self, files):
-        self.__fileIdx = 0
+    def __init__(self, filesNames, infoLog):
+        self.__infoLog = infoLog
+        self.__fileIdx = -1
         self.__tweetIdx = 0
         self.__tweetInFileCounter = 0
-        self.__file = files[self.__fileIdx]
-        self.__all = files
+        self.__file = None
         self.__count = 0
-        for file in files:
-            val = self.__tweetsInFile(file)
-            if val:
-                self.__count += val
+        fixedFilenames = []
+        for filename in filesNames:
+            val = self.__tweetsInFile(filename)
+            startTime = self.__startTime(filename)
+            endTime = self.__endTime(filename)
+            self.__count += val
+            filename = self.__fixFilename(filename)
+            fixedFilenames.append(filename)
+            key = filenameToKey(filename)
+            if not self.__infoLog.has_key(key):
+                storeFileInfo(self.__infoLog, filename, startTime, val, endTime)
+            #else:
+            #    storeFileInfo(self.__infoLog, filename, startTime, val, endTime)
+        self.__all = fixedFilenames
 
     def __isLastFile(self):
         return self.__fileIdx == len(self.__all) - 1
 
     def __getNextFile(self):
-        gzFile = self.__all[self.__fileIdx]
-        gzFile.close()
-        if not self.__getFilenameMatcher(gzFile):
-            self.__rename(gzFile, self.__tweetInFileCounter)
+        if self.__file:
+            self.__file.close()
+        self.__file = None
         self.__fileIdx += 1
         self.__tweetInFileCounter = 0
-        return self.__all[self.__fileIdx]
+        filename = self.__all[self.__fileIdx] if self.__fileIdx < len(self.__all) else None
+        if filename:
+            logger.info("Open next " + filename)
+            self.__file = gzip.open(filename)
+        else:
+            logger.info("Last file reached")
+            self.__file = None
+            raise ValueError()
 
-    def __rename(self, gzFile, count):
-        filename = gzFile.filename
-        newFilename = os.path.join(os.path.dirname(filename), "s=" + os.path.basename(filename).replace(".tweets", "") + ",c=" + str(count) + ".tweets")
-        logger.info("Rename " + filename + " to " + newFilename)
-        os.rename(filename, newFilename)
+    def __fixFilename(self, filename):
+        newFilename = None
+        key = os.path.basename(filename)
+        dir = os.path.dirname(filename)
+        matcher = filenameSCEPattern.search(key)
+        if matcher:
+            newFilename = matcher.group(1) + ".tweets"
+        if not newFilename:
+            matcher = filenameSCPattern.search(key)
+            if matcher:
+                newFilename = matcher.group(1) + ".tweets"
+        if not newFilename:
+            newFilename = key
+        if newFilename is None and "=" in filename:
+            raise ValueError(filename)
+        newFilename = os.path.join(dir, newFilename)
+        if filename != newFilename:
+            logger.info("Rename " + filename + " to " + newFilename)
+            os.rename(filename, newFilename)
+        return newFilename
 
     def __iter__(self):
         return self
@@ -59,34 +104,75 @@ class TweetIterator(object):
     def count(self):
         return self.__count
 
+    def countInCurrentFile(self):
+        return self.__tweetsInFile(self.__file)
+
     def currentFile(self):
         return self.__fileIdx + 1
 
     def filesCount(self):
         return len(self.__all)
 
-    def __tweetsInFile(self, file):
-        m = self.__getFilenameMatcher(file)
-        if m:
-            return m.group(2)
-        else:
-            return None
+    def __tweetsInFile(self, filename):
+        key = filenameToKey(filename)
+        if self.__infoLog.has_key(key):
+            return self.__infoLog[key]["tweets_count"]
+        return self.__countTweetsInFile(filename)
 
-    def __getFilenameMatcher(self, file):
-        return filenamePattern.match(file.name.replace(".gz", ""))
+    def __startTime(self, filename):
+        key = filenameToKey(filename)
+        if self.__infoLog.has_key(key):
+            return self.__infoLog[key]["start"]
+        matcher = filenameSCEPattern.search(key)
+        if matcher:
+            return parser.parse(matcher.group(1))
+        matcher = filenameSCPattern.search(key)
+        if matcher:
+            return parser.parse(matcher.group(1))
+        return parser.parse(key.replace(".tweets", ""))
+
+    def __endTime(self, filename):
+        key = filenameToKey(filename)
+        if self.__infoLog.has_key(key):
+            return self.__infoLog[key]["end"]
+        matcher = filenameSCEPattern.search(key)
+        if matcher:
+            return parser.parse(matcher.group(3))
+        logger.warning(u"Cannot fine end time for " + unicode(filename))
+        return None
+
+    def __countTweetsInFile(self, filename):
+        tweetCount = 0
+        logger.info("Start counting " + str(filename))
+        file =  gzip.open(filename, "r")
+        file.seek(0)
+        while True:
+            buf = file.read(4)
+            if not buf:
+                break
+            size = struct.unpack('i', buf)[0]
+            data = file.read(size)
+            if len(data) != size:
+                raise ValueError(str(len(data)) + " != " + str(size))
+            tweetCount += 1
+        logger.info("End counting " + str(filename) + ": " + str(tweetCount))
+        return tweetCount
 
     def next(self):
+        if not self.__file:
+            self.__getNextFile()
         buf = self.__file.read(4)
         if not buf :
             if self.__isLastFile():
                 raise StopIteration()
             else:
-                raise StopIteration()
-                #self.__file = self.__getNextFile()
-                #print "Open next " + str(self.__file)
-                #buf = self.__file.read(4)
+                #raise StopIteration()
+                self.__getNextFile()
+                buf = self.__file.read(4)
         size = struct.unpack('i', buf)[0]
         data = self.__file.read(size)
+        if len(data) != size:
+            raise ValueError(str(len(data)) + " != " + str(size))
         tweet = pickle.loads(data)
         self.__tweetIdx += 1
         self.__tweetInFileCounter += 1
@@ -166,8 +252,11 @@ class StreamWrapper:
 
 class Manager:
 
-    def store(self, dir):
+    def __init__(self, dir):
+        self.__dir = dir
+        self.__infoLog = shelve.open(os.path.join(dir, "infoLog.db"))
 
+    def store(self):
         filename = self.filenameWrite(dir)
         f_out = gzip.open(filename, 'wb')
         start = datetime.now()
@@ -189,7 +278,7 @@ class Manager:
                     if delta > dayDelta:
                         print u"Close file " + filename + u" (" + unicode(tweetInStreamCounter) + u")"
                         f_out.close()
-                        self.__renameFile(filename, start, tweetInFileCounter)
+                        self.__saveInfoAboutFile(filename, start, tweetInFileCounter)
                         filename = self.filenameWrite(dir)
                         f_out = gzip.open(filename, 'wb')
                         start = datetime.now()
@@ -210,19 +299,14 @@ class Manager:
         except BaseException:
             pass
 
-    def __renameFile(self, filename, start, tweetsCount):
-        dir = os.path.dirname(filename)
-        newFilename = os.path.join(dir, "s=" + str(start) + ",c=" + str(tweetsCount) + ",e=" + str(datetime.now()) + ".tweets")
-        os.rename(filename, newFilename)
+    def __saveInfoAboutFile(self, filename, start, tweetsCount):
+        storeFileInfo(self.__infoLog, filename, start, tweetsCount, datetime.now())
 
-    def restore(self, filename, lastOnly=False):
-        filesNames = self.filenameRead(filename)
+    def restore(self, lastOnly=False):
+        filesNames = self.filenameRead(self.__dir)
         logger.info(u"Open files: " + unicode('\n'.join(map(str, filesNames))))
-        f_in=[]
         filesNames = [filesNames[-1]] if lastOnly else filesNames
-        for f in filesNames:
-            f_in.append(gzip.open(f, "rb"))
-        return TweetIterator(f_in)
+        return TweetIterator(filesNames, self.__infoLog)
 
     def filenameWrite(self, dir):
         if not path.exists(dir):
@@ -245,11 +329,13 @@ class Manager:
         return sorted(result, key=os.path.getmtime)
 
 if __name__ == "__main__":
-    m = Manager()
-    dir = u"/tmp/tweets/" if len(sys.argv) < 3 else sys.argv[2]
-    method = u"s" if len(sys.argv) < 2 else sys.argv[1]
+    dir = sys.argv[2]
+    method = sys.argv[1]
+    m = Manager(dir)
     if method == u"s":
         m.store(dir)
     elif method == u"r":
-        for t in m.restore(dir):
+        for t in m.restore():
             print t
+    else:
+        raise ValueError("Method")

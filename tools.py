@@ -50,7 +50,8 @@ class NothingToDo(Exception):
 
 class StoppableThread(Thread):
 
-    def __init__(self, name):
+    def __init__(self, name = None):
+        name = name or self.__class__.__name__
         Thread.__init__(self, name=name)
         self.__stop = Event()
         self.__pauseEvent = Event()
@@ -75,6 +76,7 @@ class StoppableThread(Thread):
         while not self.__stop.isSet():
             try:
                 if self.__pauseEvent.isSet():
+                    logger.debug("Paused")
                     time.sleep(1)
                     continue
                 self.runPart()
