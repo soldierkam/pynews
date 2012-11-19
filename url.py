@@ -21,9 +21,13 @@ class PutMsg(object):
     def getUrl(self):
         return self.__url
 
+    def __str__(self):
+        return u"{Put:" + unicode(self.__url) + u"}"
+
 class GetMsg(object):
 
     def __init__(self, url):
+        self.__url = url.getExpandedUrl()
         self.__digest = url.getUrlDigest()
         self.__mutex = Semaphore(0)
 
@@ -37,6 +41,10 @@ class GetMsg(object):
     def getResponse(self):
         self.__mutex.acquire()
         return self.__response
+
+    def __str__(self):
+        return u"{Get:" + unicode(self.__url) + u"}"
+
 
 class UrlResolverCache(StoppableThread):
 
@@ -65,7 +73,9 @@ class UrlResolverCache(StoppableThread):
 
     def runPart(self):
         try:
+            logger.debug("Fetch msg... (qsize=" + str(self.__queue.qsize()) + ")")
             msg = self.__queue.get(block=True, timeout=3)
+            logger.debug("Msg: " + str(msg))
             if type(msg) is PutMsg:
                 resolvedUrl = msg.getUrl()
                 logger.debug("Put extracted url text in shelve: " + resolvedUrl.getUrl())
@@ -104,6 +114,7 @@ class UrlResolver():
         tryNumber = 0
         cachable = True
         tryAgainLater = False
+        logger.debug(u"Fetching " + unicode(self.__url))
         while tryNumber < 3 and not self.isStopping():
             try:
                 #urlStr = url.getExpandedUrl() or url.getUrl()
@@ -129,18 +140,22 @@ class UrlResolver():
                 logger.error("cannot resolve url " + str(self.__url) + ": " + str(err))
                 tryNumber += 1
         else:
-            logger.error("drop resolving url " + unicode(self.__url))
             if cachable:
+                logger.error("Drop resolving url " + unicode(self.__url))
                 self.__url.setError()
                 self.__cache.put(self.__url)
                 self.__mgr.afterResolveUrl(self.__url)
             else:
+                logger.error("Drop resolving url " + unicode(self.__url) + " - try again?")
                 Publisher.sendMessage("model.pause")
+                logger.error(u"Pause model")
                 if not self.__url.isDnsError():
                     #jeżeli nie mamy ustawionego błędu to ustawiamy i wstawiamy do kolejki w celu weryfikacji
                     self.__url.setDnsError()
                     tryAgainLater = True
+                    logger.error(u"Try again: " + unicode(self.__url))
                 if self.correctInternetConnection():
+                    logger.error(u"Restart model")
                     Publisher.sendMessage("model.start")
         return tryAgainLater
 
@@ -169,16 +184,15 @@ class UrlResolverWorker(StoppableThread):
         self.__cache = cache
 
     def runPart(self):
-        url = None
-        while url is None:
-            try:
-                url = self.__queue.get(True, 3)
-                resolver = UrlStoppableResolver(url, self.__mgr, self.__cache, self)
-                putInQueue = resolver.resolve()
-                if putInQueue:
-                    self.__queue.put(url)
-            except Empty:
-                return
+        try:
+            logger.debug("Fetch url...")
+            url = self.__queue.get(True, 3)
+            resolver = UrlStoppableResolver(url, self.__mgr, self.__cache, self)
+            putInQueue = resolver.resolve()
+            if putInQueue:
+                self.__queue.put(url)
+        except Empty:
+            return
 
 class UrlResolverManager():
 
@@ -209,6 +223,7 @@ class UrlResolverManager():
             worker.pauseJob()
 
     def continueWorkers(self):
+        logger.debug("Continue workers job")
         for worker in self.__workers:
             worker.continueJob()
 
@@ -216,6 +231,10 @@ class UrlResolverManager():
         return self.__resolverCache.hitRate()
 
     def addUrlToQueue(self, url):
+        if url.getState() is not None:
+            logger.info(u"Url already in queue:" + unicode(url))
+            return
+        url.setState("pending")
         cachedValue = self.__resolverCache.get(url)
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
@@ -233,6 +252,11 @@ class UrlResolverManager():
             logger.warning("Queue size is too big: " + unicode(s))
 
     def afterResolveUrl(self, url):
+        if url.getState() != "pending":
+            raise ValueError(unicode(url))
+        url.setState("finished")
+        if not url.isError():
+            url.getText()
         self.__notifyUrlResolved(url)
 
     def __notifyUrlResolved(self, url):
@@ -278,22 +302,9 @@ class UrlSyncResolverManager():
 
 class UrlBuilder():
 
-    def __init__(self, urlResolver, freqDist):
-        self.__urlResolver = urlResolver
+    def __init__(self, freqDist):
         self.__freqDist = freqDist
         self.__urls = {}
-
-    def init(self):
-        self.__urlResolver.start()
-
-    def pauseResolver(self):
-        self.__urlResolver.pauseWorkers()
-
-    def resumeResolver(self):
-        self.__urlResolver.continueWorkers()
-
-    def stop(self):
-        self.__urlResolver.stop()
 
     def __call__(self, *args, **kwargs):
         urlEntity = args[1]
@@ -306,7 +317,6 @@ class UrlBuilder():
         else:
             self.__urls[key] = u
             u.linkWithTweet(tweet)
-            self.__urlResolver.addUrlToQueue(u)
         if not isinstance(u, Url):
             raise ValueError(u"Wrong object type " + unicode(u))
         self.__freqDist.inc(u)
@@ -315,6 +325,7 @@ class UrlBuilder():
 class Url:
 
     def __init__(self, entity):
+        self.__state = None
         self.__url = entity["url"]
         self.__expanded = entity["expanded_url"]
         self.__validateUrl(self.__url, entity)
@@ -329,6 +340,14 @@ class Url:
     def linkWithTweet(self, tweet):
         self.__tweets.append(tweet)
         tweet.addUrl(self)
+
+    def getState(self):
+        return self.__state
+
+    def setState(self, state):
+        if state not in ["pending", "finished"]:
+            raise ValueError(state)
+        self.__state = state
 
     def tweets(self):
         return self.__tweets
@@ -372,7 +391,7 @@ class Url:
 
     def getText(self):
         if self.__text is None:
-            raise ValueError("Text in None")
+            raise ValueError("Text is None")
         return self.__text
 
     def setError(self):

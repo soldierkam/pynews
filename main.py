@@ -99,7 +99,7 @@ class Model(StoppableThread):
         self.__urlFreq = FreqDist()
         self.__tweetResolvedListener = ResolvedTweetQueue(os.path.join(cacheDir, "tweets"), TxtClassificatorWrapper())
         self.__urlResolver = UrlResolverManager(os.path.join(cacheDir, "urlResolverCache.db"), self.__tweetResolvedListener)
-        self.__urlBuilder = UrlBuilder(self.__urlResolver, self.__urlFreq)
+        self.__urlBuilder = UrlBuilder(self.__urlFreq)
         self.__refreshGui = Event()
         Publisher.subscribe(self.onPauseJob, "model.pause")
         Publisher.subscribe(self.onResumeJob, "model.start")
@@ -115,7 +115,7 @@ class Model(StoppableThread):
 
     def doPauseJob(self):
         self.pauseJob()
-        self.__urlBuilder.pauseResolver()
+        self.__urlResolver.pauseWorkers()
         Publisher.sendMessage("model.paused")
 
     def onResumeJob(self, msg):
@@ -123,26 +123,28 @@ class Model(StoppableThread):
 
     def doContinueJob(self):
         self.continueJob()
-        self.__urlBuilder.resumeResolver()
+        self.__urlResolver.continueWorkers()
         Publisher.sendMessage("model.started")
 
     def atBegin(self):
         logger.info("Preparing model...")
-        self.__urlBuilder.init()
+        self.__urlResolver.start()
         logger.info("Start analyzing tweets")
 
     def runPart(self):
         try:
             s = self.__elem or self.__iter.next()
             self.__elem = s
-            if self.isPaused():
-                time.sleep(1)
-                return
-
             if u'text' in s:
                 try:
                     tweet = TweetText(s, self.__urlBuilder)
+                    for url in tweet.urls():
+                        self.__urlResolver.addUrlToQueue(url)
                     retweeted = TweetText(s["retweeted_status"], self.__urlBuilder) if "retweeted_status" in s else None
+                    if retweeted:
+                        for url in tweet.urls():
+                            self.__urlResolver.addUrlToQueue(url)
+
                 except UrlException as e:
                     logger.warn("Cannot build url: " + str(e))
             self._doSmthElse()
@@ -157,7 +159,7 @@ class Model(StoppableThread):
             logger.info("Send data to GUI")
             self.__refreshGui.clear()
             data = {}
-            data["urls"] = {urlSample: [self.__urlFreq.freq(urlSample), urlSample in self.__tweetResolvedListener.finalUrls()] for urlSample in set(self.__urlFreq.samples())}
+            data["urls"] = [(urlSample, self.__urlFreq.freq(urlSample), urlSample in self.__tweetResolvedListener.finalUrls()) for urlSample in set(self.__urlFreq.samples())]
             data["cache"] = self.__urlResolver.cacheHitRate()
             data["position"] = self.__iter.position()
             data["position_end"] = self.__iter.count()
@@ -167,7 +169,7 @@ class Model(StoppableThread):
 
     def stop(self):
         StoppableThread.stop(self)
-        self.__urlBuilder.stop()
+        self.__urlResolver.stop()
         self.__tweetResolvedListener.stop()
 
 def main():

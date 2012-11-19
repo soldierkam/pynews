@@ -30,8 +30,8 @@ class UrlsGrid(Grid):
         self.Bind(grid.EVT_GRID_CELL_LEFT_DCLICK, self._OnLinkClicked)
         self.Bind(grid.EVT_GRID_LABEL_LEFT_CLICK, self._OnLabelLeftClicked)
 
-    def update(self, urlsDict):
-        self.__urls = urlsDict.items()
+    def update(self, urls):
+        self.__urls = urls
         self._doUpdate()
 
     def _doUpdate(self):
@@ -39,15 +39,14 @@ class UrlsGrid(Grid):
         self._sort()
         self._filterUrls()
         self._prepareGrid()
-        for url, [freq, isFinal] in self.__urls:
+        for url, freq, isFinal in self.__urls:
             self._setRow(i, url, freq, isFinal)
             i += 1
 
-    def _urlSortFunction(self, urlWithList):
-        url = urlWithList[0]
-        list = urlWithList[1]
-        freq = list[0]
-        isFinal = list[1]
+    def _urlSortFunction(self, urlFreqAndFinal):
+        url = urlFreqAndFinal[0]
+        freq = urlFreqAndFinal[1]
+        isFinal = urlFreqAndFinal[2]
         if self.__sortColumnId == 0:
             return url.getUrl()
         elif self.__sortColumnId == 1:
@@ -66,7 +65,7 @@ class UrlsGrid(Grid):
         self.__urls = sorted(self.__urls, key=self._urlSortFunction, reverse=self.__sortDirectionDesc)
 
     def _filterUrls(self):
-        self.__urls = [[url, [freq, isFinal]] for url, [freq, isFinal] in self.__urls if not self.__onlyFinalUrls or isFinal]
+        self.__urls = [(url, freq, isFinal) for url, freq, isFinal in self.__urls if not self.__onlyFinalUrls or isFinal]
 
     def _prepareGrid(self):
         diff = len(self.__urls) - self.NumberRows
@@ -171,7 +170,8 @@ class Gui(wx.Frame):
         self.grid.update(data["urls"])
 
     def onTimerEvent(self, event):
-        self.onRefreshMenuClick(event)
+        #self.onRefreshMenuClick(event)
+        pass
 
     def onModelPaused(self, msg):
         self.__paused = True

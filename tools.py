@@ -72,21 +72,24 @@ class StoppableThread(Thread):
         return self.__pauseEvent.isSet()
 
     def run(self):
-        self.atBegin()
-        while not self.__stop.isSet():
-            try:
-                if self.__pauseEvent.isSet():
-                    logger.debug("Paused")
-                    time.sleep(1)
-                    continue
-                self.runPart()
-            except NothingToDo:
-                logger.info("nothing to do")
-                break
-            except BaseException as exc:
-                logger.exception("error")
-                break
-        self.atEnd()
+        try:
+            self.atBegin()
+            while not self.__stop.isSet():
+                try:
+                    if self.__pauseEvent.isSet():
+                        logger.debug("Paused")
+                        time.sleep(1)
+                        continue
+                    self.runPart()
+                except NothingToDo:
+                    logger.info("nothing to do")
+                    break
+                except BaseException as exc:
+                    logger.exception("error")
+                    break
+            self.atEnd()
+        except:
+            logger.exception("Fatal error")
 
     def runPart(self):
         pass

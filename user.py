@@ -7,6 +7,7 @@ class User:
         self.__followersCount = user["followers_count"]
         self.__id = user["id"]
         self.__lang = user["lang"]
+        self.__name = user["screen_name"]
 
     def id(self):
         return self.__id
