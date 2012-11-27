@@ -1,33 +1,21 @@
 # -*- coding: utf-8 *-*
 from nltk import FreqDist
-from clustering import DocumentSizeClustering
+from classifier import TxtClassificatorWrapper
 from lang import TwitterLangDetect
 from gui import Gui
 from threading import Event
 from Queue import Queue, Empty, Full
-from news import NewsClassificator
 from save import Manager as StreamMgr
 from wx.lib.pubsub.pub import Publisher
 from logger import logger
 from tools import StoppableThread, NothingToDo
 from tweet import TweetText
 from url import UrlResolverManager, UrlBuilder, UrlException
-import os,cPickle, time
+import os,cPickle
 
 tld = TwitterLangDetect()
 
-class TxtClassificatorWrapper():
 
-    def __init__(self):
-        if "fake_run" in os.environ:
-            return
-        self.__documentSizeClassificator = DocumentSizeClustering("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db")
-        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews/", doTest=False)
-
-    def classify(self, txt):
-        if "fake_run" in os.environ:
-            return ["long", "p"]
-        return self.__documentSizeClassificator.classify(txt), self.__newsClassificator.classify(txt)
 
 class ResolvedTweetQueue(StoppableThread):
 
@@ -97,13 +85,17 @@ class Model(StoppableThread):
         self.__elem = None
         self.__gui = gui;
         self.__urlFreq = FreqDist()
-        self.__tweetResolvedListener = ResolvedTweetQueue(os.path.join(cacheDir, "tweets"), TxtClassificatorWrapper())
+        self.__classificator = TxtClassificatorWrapper()
+        self.__tweetResolvedListener = ResolvedTweetQueue(os.path.join(cacheDir, "tweets"), self.__classificator)
         self.__urlResolver = UrlResolverManager(os.path.join(cacheDir, "urlResolverCache.db"), self.__tweetResolvedListener)
         self.__urlBuilder = UrlBuilder(self.__urlFreq)
         self.__refreshGui = Event()
+        self.__showProbDist = Event()
+        self.__probDistUrl = None
         Publisher.subscribe(self.onPauseJob, "model.pause")
         Publisher.subscribe(self.onResumeJob, "model.start")
         Publisher.subscribe(self.onRefreshGui, "model.refreshGui")
+        Publisher.subscribe(self.onProbDist, "model.prob_dist")
         self.doPauseJob()
         self.start()
 
@@ -112,6 +104,10 @@ class Model(StoppableThread):
 
     def onPauseJob(self, msg):
         self.doPauseJob()
+
+    def onProbDist(self, msg):
+        self.__showProbDist.set()
+        self.__probDistUrl = msg.data
 
     def doPauseJob(self):
         self.pauseJob()
@@ -166,6 +162,11 @@ class Model(StoppableThread):
             data["current_file_c"] = self.__iter.currentFile()
             data["last_file_c"] = self.__iter.filesCount()
             Publisher.sendMessage("update.urls", data=data)
+        if self.__showProbDist.isSet():
+            url = self.__probDistUrl
+            self.__showProbDist.clear()
+            self.__probDistUrl = None
+            probDistI = self.__classificator.probDist(url.getText())
 
     def stop(self):
         StoppableThread.stop(self)

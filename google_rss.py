@@ -1,20 +1,15 @@
 import Queue
 from Queue import Empty
-from _socket import timeout
 import codecs
 from datetime import time
 import logging
 import os
-import urlparse
 from inliner import REMOVE
 from tools import stringToDigest
 import random
-import threading
-import time
 import feedparser
 from boilerpipe.extract import Extractor
 from inliner import Downloader as PageDownloader
-from urllib2 import urlopen
 from tools import StoppableThread
 from logger import logger
 

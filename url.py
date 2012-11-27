@@ -79,7 +79,7 @@ class UrlResolverCache(StoppableThread):
             if type(msg) is PutMsg:
                 resolvedUrl = msg.getUrl()
                 logger.debug("Put extracted url text in shelve: " + resolvedUrl.getUrl())
-                self.__shelve[resolvedUrl.getUrlDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(), "url": resolvedUrl.getUrl()}
+                self.__shelve[resolvedUrl.getUrlDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(), "url": resolvedUrl.getUrl(), "error": resolvedUrl.isError()}
                 self.__size += 1
             elif type(msg) is GetMsg:
                 if self.__shelve.has_key(msg.digest()):
@@ -122,7 +122,7 @@ class UrlResolver():
                 text = extractor.getText()
                 if text is None:
                     raise ValueError("Extracted text is None")
-                self.__url.setText(text)
+                self.__url.setTextAndHtml(text, extractor.getHTML())
                 self.__cache.put(self.__url)
                 self.__mgr.afterResolveUrl(self.__url)
                 if tryNumber > 0:
@@ -239,12 +239,16 @@ class UrlResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if cachedValue["text"]:
-                url.setText(cachedValue["text"])
-            else:
+            if "text" in cachedValue and cachedValue["text"] and "html" in cachedValue and cachedValue["html"]:
+                url.setTextAndHtml(cachedValue["text"], cachedValue["html"])
+                self.afterResolveUrl(url)
+                return
+            elif "error" in cachedValue and cachedValue["error"]:
                 url.setError()
-            self.afterResolveUrl(url)
-            return
+                self.afterResolveUrl(url)
+                return
+            else:
+                logger.info(u"Cached value do not contains data: " + unicode(cachedValue))
         self.__queue.put(url, timeout=3)
         s = self.__queue.qsize()
         if s % 20 == 0 and s > 20 and self.__lastReportedQueueSize != s:
@@ -292,11 +296,12 @@ class UrlSyncResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if cachedValue["text"]:
-                url.setText(cachedValue["text"])
-            else:
+            if "text" in cachedValue and cachedValue["text"] and "html" in cachedValue and cachedValue["html"]:
+                url.setTextAndHtml(cachedValue["text"], cachedValue["html"])
+                return
+            elif "error" in cachedValue and cachedValue["error"]:
                 url.setError()
-            return
+                return
         resolver = UrlResolver(url, self, self.__resolverCache)
         resolver.resolve()
 
@@ -331,6 +336,7 @@ class Url:
         self.__validateUrl(self.__url, entity)
         self.__validateUrl(self.__expanded, entity)
         self.__text = None
+        self.__html = None
         self.__error = False
         self.__dnsError = False
         self.__newsCategory = []
@@ -408,11 +414,14 @@ class Url:
     def isError(self):
         return self.__error
 
-    def setText(self, text):
+    def setTextAndHtml(self, text, html):
         if text is None:
             raise ValueError("Text is None!")
+        if html is None:
+            raise ValueError("HTML is None!")
         logger.info("Url " + self.__url + " resolved")
         self.__text = text
+        self.__html = html
         self.__lang = ld.detect(text)
 
     def ignore(self):

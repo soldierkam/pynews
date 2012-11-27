@@ -27,6 +27,7 @@ class UrlsGrid(Grid):
         self.SetColLabelValue(3, "Lang")
         self.SetColLabelValue(4, "Class")
         self.SetColLabelValue(5, "Mark")
+        self.DisableCellEditControl()
         self.Bind(grid.EVT_GRID_CELL_LEFT_DCLICK, self._OnLinkClicked)
         self.Bind(grid.EVT_GRID_LABEL_LEFT_CLICK, self._OnLabelLeftClicked)
 
@@ -94,8 +95,15 @@ class UrlsGrid(Grid):
 
     def _OnLinkClicked(self, event):
         r = event.GetRow()
-        rowModel = self.__urls[r][0]
-        logger.info(simplejson.dumps(rowModel.dump(), indent="\t"))
+        c = event.GetCol()
+        url = self.__urls[r][0]
+        if c == 5:
+            logger.info(simplejson.dumps(url.dump(), indent="\t"))
+        elif c == 4:
+            Publisher.sendMessage("model.prob_dist", data = url)
+        elif c == 3:
+            import webbrowser
+            webbrowser.open(url.getExpandedUrl())
 
     def _OnLabelLeftClicked(self, evt):
         col = evt.GetCol()
