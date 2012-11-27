@@ -150,6 +150,9 @@ class Model(StoppableThread):
         except StopIteration:
             raise NothingToDo()
 
+    def onPause(self):
+        self._doSmthElse()
+
     def _doSmthElse(self):
         if self.__refreshGui.isSet():
             logger.info("Send data to GUI")

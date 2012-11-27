@@ -77,7 +77,7 @@ class StoppableThread(Thread):
             while not self.__stop.isSet():
                 try:
                     if self.__pauseEvent.isSet():
-                        logger.debug("Paused")
+                        self.onPause()
                         time.sleep(1)
                         continue
                     self.runPart()
@@ -90,6 +90,9 @@ class StoppableThread(Thread):
             self.atEnd()
         except:
             logger.exception("Fatal error")
+
+    def onPause(self):
+        logger.debug("Paused")
 
     def runPart(self):
         pass
