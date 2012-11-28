@@ -1,5 +1,6 @@
 # -*- coding: utf-8 *-*
 from Queue import Queue, Empty
+import re
 import shelve
 from threading import Semaphore
 from urllib2 import URLError, HTTPError
@@ -10,6 +11,7 @@ from lang import LangDetect
 from logger import logger
 from tools import StoppableThread, stringToDigest
 from wx.lib.pubsub.pub import Publisher
+from BeautifulSoup import BeautifulSoup, Tag, CData, NavigableString
 
 ld = LangDetect()
 
@@ -79,7 +81,10 @@ class UrlResolverCache(StoppableThread):
             if type(msg) is PutMsg:
                 resolvedUrl = msg.getUrl()
                 logger.debug("Put extracted url text in shelve: " + resolvedUrl.getUrl())
-                self.__shelve[resolvedUrl.getUrlDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(), "url": resolvedUrl.getUrl(), "error": resolvedUrl.isError()}
+                self.__shelve[resolvedUrl.getUrlDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(),
+                                                             "htm": None if resolvedUrl.isError() else resolvedUrl.getHtml(),
+                                                             "url": resolvedUrl.getUrl(),
+                                                             "error": resolvedUrl.isError()}
                 self.__size += 1
             elif type(msg) is GetMsg:
                 if self.__shelve.has_key(msg.digest()):
@@ -118,26 +123,27 @@ class UrlResolver():
         while tryNumber < 3 and not self.isStopping():
             try:
                 #urlStr = url.getExpandedUrl() or url.getUrl()
+                logger.debug(u"Try  " + unicode(tryNumber))
                 extractor = Extractor(extractor='ArticleExtractor', url=self.__url.getUrl())
                 text = extractor.getText()
                 if text is None:
                     raise ValueError("Extracted text is None")
-                self.__url.setTextAndHtml(text, extractor.getHTML())
+                self.__url.setTextAndHtml(text, extractor.data)
                 self.__cache.put(self.__url)
                 self.__mgr.afterResolveUrl(self.__url)
                 if tryNumber > 0:
                     logger.info("finally resolved url " + unicode(self.__url))
                 break
             except HTTPError as err:
-                logger.error("cannot resolve url " + str(self.__url) + ": " + str(err))
+                logger.error("cannot resolve url " + str(self.__url) + " http error: " + str(err))
                 tryNumber += 1
             except URLError as err:
                 #DNS error
                 cachable = False
-                logger.error("cannot resolve url " + str(self.__url) + ": " + str(err))
+                logger.error("2cannot resolve url " + str(self.__url) + " urlerror: " + str(err))
                 tryNumber += 10
             except BaseException as err:
-                logger.error("cannot resolve url " + str(self.__url) + ": " + str(err))
+                logger.error("3cannot resolve url " + str(self.__url) + " exc: " + str(err))
                 tryNumber += 1
         else:
             if cachable:
@@ -147,8 +153,6 @@ class UrlResolver():
                 self.__mgr.afterResolveUrl(self.__url)
             else:
                 logger.error("Drop resolving url " + unicode(self.__url) + " - try again?")
-                Publisher.sendMessage("model.pause")
-                logger.error(u"Pause model")
                 if not self.__url.isDnsError():
                     #jeżeli nie mamy ustawionego błędu to ustawiamy i wstawiamy do kolejki w celu weryfikacji
                     self.__url.setDnsError()
@@ -157,6 +161,9 @@ class UrlResolver():
                 if self.correctInternetConnection():
                     logger.error(u"Restart model")
                     Publisher.sendMessage("model.start")
+                else:
+                    logger.error(u"Pause model")
+                    Publisher.sendMessage("model.pause")
         return tryAgainLater
 
     def correctInternetConnection(self):
@@ -190,6 +197,7 @@ class UrlResolverWorker(StoppableThread):
             resolver = UrlStoppableResolver(url, self.__mgr, self.__cache, self)
             putInQueue = resolver.resolve()
             if putInQueue:
+                logger.debug("Requeue url")
                 self.__queue.put(url)
         except Empty:
             return
@@ -239,8 +247,8 @@ class UrlResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if "text" in cachedValue and cachedValue["text"] and "html" in cachedValue and cachedValue["html"]:
-                url.setTextAndHtml(cachedValue["text"], cachedValue["html"])
+            if "text" in cachedValue and cachedValue["text"] and "htm" in cachedValue and cachedValue["htm"]:
+                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
                 self.afterResolveUrl(url)
                 return
             elif "error" in cachedValue and cachedValue["error"]:
@@ -296,8 +304,8 @@ class UrlSyncResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if "text" in cachedValue and cachedValue["text"] and "html" in cachedValue and cachedValue["html"]:
-                url.setTextAndHtml(cachedValue["text"], cachedValue["html"])
+            if "text" in cachedValue and cachedValue["text"] and "htm" in cachedValue and cachedValue["htm"]:
+                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
                 return
             elif "error" in cachedValue and cachedValue["error"]:
                 url.setError()
@@ -383,6 +391,7 @@ class Url:
         values["cat"] = self.__newsCategory
         values["text"] = self.__text
         values["lang"] = self.__lang
+        values["title"] = self.getTitle()
         values["tweets"] = [t.dump() for t in self.__tweets]
         return values
 
@@ -423,6 +432,31 @@ class Url:
         self.__text = text
         self.__html = html
         self.__lang = ld.detect(text)
+        self.__title = self._fetchTitle(html)
+
+    def getHtml(self):
+        return self.__html
+
+    def getTitle(self):
+        return self.__title
+
+    def _fetchTitle(self, html):
+        bs = BeautifulSoup(html)
+        metaTitle = bs.find("title")
+        tagH = bs.find("h1") or bs.find("h2") or bs.find("h3")
+        tweetsText = " " * 200
+        for tweet in self.tweets():
+            if len(tweetsText) > len(tweet.text()):
+                tweetsText = tweet.text()
+        result = u""
+        if metaTitle:
+            tagContent = u''.join(metaTitle.findAll(text=True))
+            result = u"{Meta: \"" + tagContent.strip() + u"\"}"
+        if tagH:
+            tagContent = u''.join(tagH.findAll(text=True))
+            result += u"{H: \"" + tagContent.strip() + u"\"}"
+        result += u"{T: \"" + tweetsText.strip() + u"\"}"
+        return result
 
     def ignore(self):
         return self.isResolvedOrError() and self.__newsCategory is None

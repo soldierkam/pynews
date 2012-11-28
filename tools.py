@@ -76,10 +76,12 @@ class StoppableThread(Thread):
             self.atBegin()
             while not self.__stop.isSet():
                 try:
+                    logger.debug("Check is paused?")
                     if self.__pauseEvent.isSet():
                         self.onPause()
                         time.sleep(1)
                         continue
+                    logger.debug("Run part...")
                     self.runPart()
                 except NothingToDo:
                     logger.info("nothing to do")

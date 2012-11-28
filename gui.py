@@ -20,13 +20,14 @@ class UrlsGrid(Grid):
         self.__onlyFinalUrls = False
         self.__sortColumnId = 1
         self.__sortDirectionDesc = True
-        self.CreateGrid(0, 6)
+        self.CreateGrid(0, 7)
         self.SetColLabelValue(0, "URL")
         self.SetColLabelValue(1, "Freq. (‰)")
         self.SetColLabelValue(2, "Expanded")
         self.SetColLabelValue(3, "Lang")
         self.SetColLabelValue(4, "Class")
         self.SetColLabelValue(5, "Mark")
+        self.SetColLabelValue(6, "Title")
         self.DisableCellEditControl()
         self.Bind(grid.EVT_GRID_CELL_LEFT_DCLICK, self._OnLinkClicked)
         self.Bind(grid.EVT_GRID_LABEL_LEFT_CLICK, self._OnLabelLeftClicked)
@@ -88,6 +89,7 @@ class UrlsGrid(Grid):
         self.SetCellBackgroundColour(i, 4, self.__colourForClass(url.documentClasses()))
 
         self.SetCellValue(i, 5, unicode(url.mark()))
+        self.SetCellValue(i, 6, unicode(url.getTitle()) if isFinal else u"")
 
 
     def setOnlyFinalUrls(self, value):
