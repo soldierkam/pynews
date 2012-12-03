@@ -44,7 +44,7 @@ class TweetText:
         values["time"] = self.__createdAt
         values["retweets"] = self.__retweets
         values["user"] = self.__user.dump()
-        values["coordinates"] = self.location()
+        values["coordinates"] = self.__coordinates
         return values
 
     def __eq__(self, other):

@@ -19,7 +19,7 @@ __author__ = 'soldier'
 #w - specifies the world topic
 WORLD="w"
 #b - specifies the business topic
-BUSINESS="n"
+BUSINESS="b"
 #n - specifies the nation topic
 NATION="n"
 #t - specifies the science and technology topic

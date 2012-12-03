@@ -12,10 +12,9 @@ from tools import StoppableThread, NothingToDo
 from tweet import TweetText
 from url import UrlResolverManager, UrlBuilder, UrlException
 import os,cPickle
+from web_server import EmbeddedHttpServer
 
 tld = TwitterLangDetect()
-
-
 
 class ResolvedTweetQueue(StoppableThread):
 
@@ -25,10 +24,14 @@ class ResolvedTweetQueue(StoppableThread):
         self.__classificator = classificator
         self.__urls = []
         self.__dir = dir
+        self.__server = EmbeddedHttpServer(self.__urls)
         self.start()
 
     def tweetResolved(self, tweet):
         self.__queue.put(tweet)
+
+    def atBegin(self):
+        self.__server.start()
 
     def runPart(self):
         try:
@@ -46,12 +49,13 @@ class ResolvedTweetQueue(StoppableThread):
                 self.__urls.append(url)
                 if len(self.__urls) % 100 == 99:
                     self.__store()
-            return
         except Empty:
-            return
+            pass
+        return
 
     def atEnd(self):
         StoppableThread.atEnd(self)
+        self.__server.stop()
         self.__store()
 
     def finalTweets(self):
@@ -84,6 +88,7 @@ class Model(StoppableThread):
         self.__iter = stream.__iter__()
         self.__elem = None
         self.__gui = gui;
+        self.__softPause = True
         self.__urlFreq = FreqDist()
         self.__classificator = TxtClassificatorWrapper()
         self.__tweetResolvedListener = ResolvedTweetQueue(os.path.join(cacheDir, "tweets"), self.__classificator)
@@ -103,6 +108,9 @@ class Model(StoppableThread):
         self.__refreshGui.set()
 
     def onPauseJob(self, msg):
+        d = msg.data
+        if self.__softPause:
+            self.__softPause = d["soft"] if d and "soft" in d else False
         self.doPauseJob()
 
     def onProbDist(self, msg):
@@ -115,7 +123,14 @@ class Model(StoppableThread):
         Publisher.sendMessage("model.paused")
 
     def onResumeJob(self, msg):
-        self.doContinueJob()
+        d = msg.data
+        softResume = d["soft"] if d and "soft" in d else False
+        userResume = not softResume
+        if userResume or self.__softPause:
+            logger.info("Continue job " + unicode(softResume) + unicode(self.__softPause))
+            self.doContinueJob()
+        else:
+            logger.info("Ignore resume request")
 
     def doContinueJob(self):
         self.continueJob()

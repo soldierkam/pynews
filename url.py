@@ -9,7 +9,7 @@ from urlparse import urlparse
 from boilerpipe.extract import Extractor
 from lang import LangDetect
 from logger import logger
-from tools import StoppableThread, stringToDigest
+from tools import StoppableThread, stringToDigest, longSubstrPair, fetchTitle
 from wx.lib.pubsub.pub import Publisher
 from BeautifulSoup import BeautifulSoup, Tag, CData, NavigableString
 
@@ -160,10 +160,10 @@ class UrlResolver():
                     logger.error(u"Try again: " + unicode(self.__url))
                 if self.correctInternetConnection():
                     logger.error(u"Restart model")
-                    Publisher.sendMessage("model.start")
+                    Publisher.sendMessage("model.start", data={"soft": True})
                 else:
                     logger.error(u"Pause model")
-                    Publisher.sendMessage("model.pause")
+                    Publisher.sendMessage("model.pause", data={"soft": True})
         return tryAgainLater
 
     def correctInternetConnection(self):
@@ -192,7 +192,7 @@ class UrlResolverWorker(StoppableThread):
 
     def runPart(self):
         try:
-            logger.debug("Fetch url...")
+            logger.debug("Fetch url... (qsize=" + str(self.__queue.qsize()) + ")")
             url = self.__queue.get(True, 3)
             resolver = UrlStoppableResolver(url, self.__mgr, self.__cache, self)
             putInQueue = resolver.resolve()
@@ -201,6 +201,10 @@ class UrlResolverWorker(StoppableThread):
                 self.__queue.put(url)
         except Empty:
             return
+
+    def atEnd(self):
+        StoppableThread.atEnd(self)
+        logger.info("Queue size: " + str(self.__queue.qsize()))
 
 class UrlResolverManager():
 
@@ -441,22 +445,20 @@ class Url:
         return self.__title
 
     def _fetchTitle(self, html):
-        bs = BeautifulSoup(html)
-        metaTitle = bs.find("title")
-        tagH = bs.find("h1") or bs.find("h2") or bs.find("h3")
-        tweetsText = " " * 200
-        for tweet in self.tweets():
-            if len(tweetsText) > len(tweet.text()):
-                tweetsText = tweet.text()
-        result = u""
-        if metaTitle:
-            tagContent = u''.join(metaTitle.findAll(text=True))
-            result = u"{Meta: \"" + tagContent.strip() + u"\"}"
-        if tagH:
-            tagContent = u''.join(tagH.findAll(text=True))
-            result += u"{H: \"" + tagContent.strip() + u"\"}"
-        result += u"{T: \"" + tweetsText.strip() + u"\"}"
-        return result
+        #tweetsText = " " * 200
+        #for tweet in self.tweets():
+        #    if len(tweetsText) > len(tweet.text()):
+        #        tweetsText = tweet.text()
+
+        titles = list()
+        #titles.append((tweetsText.strip(), "t"))
+        title = fetchTitle(html=html, titles=titles)#.strip().replace("\n", " ").replace("\t", " ")
+        #while True:
+        #    title2 = title.replace("  ", " ")
+        #    if title2 == title:
+        #        break
+        #    title = title2
+        return title
 
     def ignore(self):
         return self.isResolvedOrError() and self.__newsCategory is None

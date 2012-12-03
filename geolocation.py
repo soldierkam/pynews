@@ -33,6 +33,9 @@ class Position():
                 return addrComp["short_name"], addrComp["long_name"]
         return None
 
+    def dump(self):
+        return {"coordinates": self.self.__coordinates}
+
 if __name__ == "__main__":
     pos = Position(-75.14310264, 40.05701649)
     logger.info("Country: " + str(pos.getCountry()))

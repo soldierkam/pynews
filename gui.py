@@ -61,7 +61,7 @@ class UrlsGrid(Grid):
             return url.documentClasses()[0] if len(url.documentClasses()) > 0 else ""
         elif self.__sortColumnId == 5:
             return url.mark()
-        raise ValueError("Wrong value: " + self.__sortColumnId)
+        raise ValueError("Wrong value: " + str(self.__sortColumnId))
 
     def _sort(self):
         self.__urls = sorted(self.__urls, key=self._urlSortFunction, reverse=self.__sortDirectionDesc)

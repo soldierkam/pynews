@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="google-site-verification" content="zH6XlTeXIHjFaGrwg3kiqQPvJ_nxFXI1O3ysbZITOAE" />
+
+    <title>TweetMap</title>
+    <!--<link href='http://fonts.googleapis.com/css?family=PT+Sans+Narrow&subset=latin,latin-ext' rel='stylesheet' type='text/css'>-->
+    <link type="text/css" href="static/treemap/Treemap.css" rel="stylesheet" />
+    <link type="text/css" href="static/bootstrap/css/bootstrap.css" rel="stylesheet" />
+    <link type="text/css" href="static/bootstrap/css/bootstrap-responsive.css" rel="stylesheet" />
+    <link type="text/css" href="static/treemap/base.css" rel="stylesheet" />
+    <link REL="SHORTCUT ICON" HREF="static/favicon.ico">
+
+    <script language="javascript" type="text/javascript" src="static/jquery/jquery-1.7.1.js"></script>
+    <script language="javascript" type="text/javascript" src="static/jquery/jquery.ba-hashchange.js"></script>
+    <script language="javascript" type="text/javascript" src="static/treemap/DOMTreeMap.js"></script>
+    <script language="javascript" type="text/javascript" src="static/bootstrap/js/bootstrap.js"></script>
+    <script language="javascript" type="text/javascript" src="static/bootstrap/js/bootstrap-dropdown.js"></script>
+
+    <script type="text/javascript">
+        //var _gaq = _gaq || [];
+        //_gaq.push(['_setAccount', 'UA-30167465-1']);
+        //_gaq.push(['_trackPageview']);
+
+        //(function() {
+        //    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        //    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        //    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+        //})();
+
+        //WebFontConfig = {
+        //    google: { families: [ 'PT+Sans+Narrow::latin,latin-ext' ] }
+        //};
+        //(function() {
+        //    var wf = document.createElement('script');
+        //    wf.src = ('https:' == document.location.protocol ? 'https' : 'http') +
+        //            '://ajax.googleapis.com/ajax/libs/webfont/1/webfont.js';
+        //    wf.type = 'text/javascript';
+        //    wf.async = 'true';
+        //    var s = document.getElementsByTagName('script')[0];
+        //    s.parentNode.insertBefore(wf, s);
+        //})();
+    </script>
+
+    <style>
+        body{
+            height:100%;
+            margin-bottom:0;
+            padding-bottom:0;
+        }
+
+        .stretchedToMargin {
+            display: block;
+            position:absolute;
+            height:auto;
+            bottom:0;
+            top:0;
+            left:0;
+            right:0;
+            margin-top:20px;
+            margin-bottom:20px;
+            margin-right:80px;
+            margin-left:80px;
+        }
+
+    </style>
+
+</head>
+<script language="javascript" type="text/javascript" src="static/app.js"></script>
+
+<body class="noise" >
+
+<div class="navbar navbar-fixed-top">
+    <div class="navbar-inner">
+        <div class="container" >
+            <a class="brand" href="#ALL">TweetMap</a>
+            <ul class="nav">
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown"><span class="topic-name">Topic</span><b class="caret"></b></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="#BUSINESS">Business</a></li>
+                        <li><a href="#ELECTIONS">Elections</a></li>
+                        <li><a href="#ENTERTAINMENT">Entertainment</a></li>
+                        <li><a href="#HEALTH">Health</a></li>
+                        <li><a href="#HEADLINES">Headlines</a></li>
+                        <li><a href="#NATION">Nation</a></li>
+                        <li><a href="#POLITICS">Politics</a></li>
+                        <li><a href="#SCIENCE">Science</a></li>
+                        <li><a href="#SPORT">Sport</a></li>
+                        <li><a href="#TECHNOLOGY">Technology</a></li>
+                        <li><a href="#WORLD">World</a></li>
+                        <li class="divider"></li>
+                        <li><a href="#ALL">All</a></li>
+                    </ul>
+                </li>
+            </ul>
+            <ul class="nav pull-right">
+                <li id="fat-menu" class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown"><c:out value="${userProfile.screenName}"/><b class="caret"></b></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="./signout">Sign out</a></li>
+                        <li class="divider"></li>
+                        <li><a href="#">Settings</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="stretchedToMargin" style="padding-top: 60px;">
+    <div id="infovis"></div>
+    <div id="loader">
+        <div id="floatingBarsG" >
+            <div class="blockG" id="rotateG_01">
+            </div>
+            <div class="blockG" id="rotateG_02">
+            </div>
+            <div class="blockG" id="rotateG_03">
+            </div>
+            <div class="blockG" id="rotateG_04">
+            </div>
+            <div class="blockG" id="rotateG_05">
+            </div>
+            <div class="blockG" id="rotateG_06">
+            </div>
+            <div class="blockG" id="rotateG_07">
+            </div>
+            <div class="blockG" id="rotateG_08">
+            </div>
+        </div>
+    </div>
+</div>
+
+
+</body>
+</html>
