@@ -333,7 +333,7 @@ $jit.TM.Squarified.implement({
         var uc = user.cat;
         var catFactor = cFactor(uc, c),
             meanFactor = userCtxMean(user, c),
-            result = Math.pow(catFactor/meanFactor, 4);
+            result = Math.pow(catFactor/meanFactor, 2);
 
         //log(cat + "=" + result);
         return result
@@ -543,7 +543,9 @@ $jit.TM.Squarified.implement({
 
     function bindSettingsForm(){
         var win = $("#settingsModal"),
-            form = win.find("form");
+            form = win.find("form"),
+            xhr;
+
         form.submit(function(){
             var autorefresh=form.find("#autorefresh").is(':checked'),
                 screenName=form.find("#user").val();
@@ -557,31 +559,49 @@ $jit.TM.Squarified.implement({
             state.autorefresh = autorefresh;
             state.screenName = screenName;
             disableOrEnableAutoRefresh();
+            showLogoutMenu(screenName);
             win.modal('hide')
             return false;
         });
+        form.find('#user').typeahead({
+            source: function(query, callback){
+                if(xhr){
+                    xhr.abort();
+                }
+                xhr = $.ajax({
+                    url: '/userTypeAhead.json',
+                    data: {
+                        q: query
+                    },
+                    success: function(d){
+                        xhr = undefined;
+                        callback(d.options);
+                    }
+                });
+            }
+        });
+        $(".typeahead").css("z-index", 2000);
         checkStatus();
     }
 
     $(document).ready(onReady);
 
     function showLogonMenu(){
-        $("#screenName").append("Not logged")
-        $("#userMenu").append("<li><a href='/logon.html'>Log on</a></li>")
-        $(".user-logged").hide()
+        $("#screenName").replaceWith("Not logged");
+        $(".user-logged").hide();
+        $(".user-not-logged").show()
     }
 
-    function showLogoutMenu(user, settings){
-        var userCtx = settings ? settings.screenName : user;
-        $("#screenName").append(userCtx)
-        $("#userMenu").append("<li><a href=\"/logout.html\">Sign out</a></li>")
-        $(".user-logged").show()
+    function showLogoutMenu(userCtx){
+        $("#screenName").replaceWith(userCtx);
+        $(".user-logged").show();
+        $(".user-not-logged").hide()
     }
 
     function updateTooltip(proc, phase){
         proc = Math.floor(proc);
         $('#fat-menu').tooltip("destroy");
-        $('#fat-menu').tooltip({placement: "bottom", title: "Done: " + proc + "% (phase: " + phase + "/4)"});
+        $('#fat-menu').tooltip({placement: "right", html: true, title: "Done: " + proc + "% (phase: " + phase + "/4)"});
     }
 
     function checkStatus(){
@@ -589,8 +609,9 @@ $jit.TM.Squarified.implement({
             url: '/settings.json',
             success: function( json ) {
                 if(json.is){
-                    var settings = json.settings
-                    showLogoutMenu(json.name, settings);
+                    var settings = json.settings,
+                        screenName = settings ? settings.screenName : user;
+                    showLogoutMenu(screenName);
                     state.screenName = settings.screenName;
                     state.autorefresh = settings.autorefresh === true || settings.autorefresh === "true";
                     loadValueIntoFormAndPrepareAutoRefresh();

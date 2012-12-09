@@ -192,4 +192,5 @@ if __name__ == "__main__":
     #print longSubstrPair(data)
     #logger.info(fetchTitleByUrl("http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/"))
     #logger.info(fetchTitleByUrl("http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea"))
-    logger.info(fetchTitleByUrl("http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html"))
+    #logger.info(fetchTitleByUrl("http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html"))
+    logger.info(fetchTitleByUrl("http://www.france24.com/en/20121012-mars-rover-makes-surprising-rock-find?utm_source=dlvr.it&utm_medium=twitter"))

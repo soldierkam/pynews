@@ -271,6 +271,22 @@ class PynewsHandler(BaseHTTPRequestHandler):
             logger.exception("Error")
         self.__sendRedirect("/")
 
+    def GET_UserTypeAheadJson(self):
+        if not "q" in self.params:
+            logger.info("Missing param")
+            self.send_error(400)
+            return
+        self.send_response(200, "OK")
+        self.send_header("Content-Type", "application/json")
+        api = self.__api()
+        self.end_headers()
+        users = api.search_users(q=self.params["q"][0])
+        userNameList = []
+        for user in users:
+            userNameList.append(user.screen_name)
+        result = {"options": userNameList}
+        self.wfile.write(simplejson.dumps(result))
+
     def __loadUser(self):
         api = self.__api()
         user = api.verify_credentials()

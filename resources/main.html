@@ -25,6 +25,12 @@
             height:100%;
             margin-bottom:0;
             padding-bottom:0;
+            line-height: 20px;
+        }
+
+        .tooltip-inner{
+            width: 300px;
+            min-width: 150px;
         }
 
         .stretchedToMargin {
@@ -84,7 +90,10 @@
                         <!--<li class="divider"></li>-->
                         <!--<li><a href="#">Settings</a></li>-->
                         <li class="user-logged"><a href="#settingsModal" data-toggle="modal">Settings...</a></li>
+
                         <li class="divider user-logged">
+                        <li class="user-logged"><a href="/logout.html">Sign out</a></li>
+                        <li class="user-not-logged"><a href='/logon.html'>Log on</a></li>
                     </ul>
                 </li>
             </ul>
@@ -128,7 +137,7 @@
                 <div class="control-group">
                     <label class="control-label" for="user">Screen name:</label>
                     <div class="controls">
-                        <input id="user" type="text" placeholder="Put screen name of twitter user...">
+                        <input id="user" type="text" placeholder="Put screen name of twitter user..." data-provide="typeahead">
                     </div>
                 </div>
                 <div class="control-group">
