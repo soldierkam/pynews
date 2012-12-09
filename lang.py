@@ -1,4 +1,5 @@
 # -*- coding: utf-8 *-*
+import threading
 
 from nltk.util import trigrams as nltk_trigrams
 from nltk.tokenize import word_tokenize as nltk_word_tokenize
@@ -6,8 +7,6 @@ from nltk.probability import FreqDist
 from nltk.corpus.util import LazyCorpusLoader
 from nltk.corpus.reader.api import CorpusReader
 from nltk.corpus.reader.util import StreamBackedCorpusView, concat
-from math import log
-
 
 #http://misja.posterous.com/language-detection-with-python-nltk
 import unicodedata
@@ -43,52 +42,83 @@ class LangIdCorpusReader(CorpusReader):
         return concat([self.CorpusView(path, self._read_trigram_block) for path in self.abspaths(fileids=fileids)])
 
 class LangDetect(object):
-    language_trigrams = {}
-    langid            = LazyCorpusLoader('langid', LangIdCorpusReader, r'(?!\.).*\.txt')
+
+    _instance = None
+    _instanceMutex = threading.Semaphore()
 
     def __init__(self, languages=['nl', 'en', 'fr', 'de', 'es', 'th', 'pt', 'pl', "id", "ru", "it", "ru"]):
+        logger.info("Build " + self.__class__.__name__ + " ... ")
+        self.language_trigrams = {}
+        self.langid = LazyCorpusLoader('langid', LangIdCorpusReader, r'(?!\.).*\.txt')
+        self.__mutex = threading.Semaphore()
         for lang in languages:
             self.language_trigrams[lang] = FreqDist()
             for f in self.langid.freqs(fileids=lang+"-3grams.txt"):
                 self.language_trigrams[lang].inc(f[0], f[1])
+        logger.info("Build " + self.__class__.__name__ + ": done!")
+
+    @staticmethod
+    def instance():
+        if LangDetect._instance is not None:
+            return LangDetect._instance
+        try:
+            LangDetect._instanceMutex.acquire()
+            if LangDetect._instance is None:
+                LangDetect._instance = LangDetect()
+            return LangDetect._instance
+        finally:
+            LangDetect._instanceMutex.release()
 
     def detect(self, text):
         '''
         Detect the text's language
         '''
         #print "Detect: " + text
-        text = unicodedata.normalize("NFC", text)
-        words    = nltk_word_tokenize(text.lower())
-        trigrams = {}
-        scores   = dict([(lang, 0) for lang in self.language_trigrams.keys()])
+        try:
+            self.__mutex.acquire()
+            if not text:
+                raise ValueError(u"Text: " + unicode(text))
+            text = unicodedata.normalize("NFC", text)
+            words    = nltk_word_tokenize(text.lower())
+            trigrams = {}
+            scores   = dict([(lang, 0) for lang in self.language_trigrams.keys()])
 
-        for match in words:
-            word_trigrams = self.get_word_trigrams(match)
-            #print "Match: " + match
-            #print "trigrams: " + str(word_trigrams)
-            for trigram in word_trigrams:
-                if not trigram in trigrams.keys():
-                    trigrams[trigram] = 0
-                trigrams[trigram] += 1
+            for match in words:
+                word_trigrams = self.__get_word_trigrams(match)
+                #print "Match: " + match
+                #print "trigrams: " + str(word_trigrams)
+                for trigram in word_trigrams:
+                    if not trigram in trigrams.keys():
+                        trigrams[trigram] = 0
+                    trigrams[trigram] += 1
 
-        total = sum(trigrams.values())
+            total = sum(trigrams.values())
 
-        for trigram, count in trigrams.items():
-            for lang, frequencies in self.language_trigrams.items():
-                # normalize and add to the total score
-                scores[lang] += (float(frequencies[trigram]) / float(frequencies.N())) * (float(count) / float(total))
+            for trigram, count in trigrams.items():
+                for lang, frequencies in self.language_trigrams.items():
+                    # normalize and add to the total score
+                    try:
+                        scores[lang] += (float(frequencies[trigram]) / float(frequencies.N())) * (float(count) / float(total))
+                    except ZeroDivisionError as e:
+                        logger.error(u"Div: " + unicode(float(frequencies.N())) + u" " + unicode(float(total)))
+                        raise e
 
-        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        #print sorted_scores
-        for lang, score in sorted_scores:
-            if score > 0.00001:
-                return lang
-        return None
+            sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            #print sorted_scores
+            for lang, score in sorted_scores:
+                if score > 0.00001:
+                    return lang
+            return None
+        finally:
+            self.__mutex.release()
 
-    def get_word_trigrams(self, match):
+    def __get_word_trigrams(self, match):
         return [''.join(trigram) for trigram in nltk_trigrams(match) if trigram != None]
 
-class TwitterLangDetect(LangDetect):
+class TwitterLangDetect():
+
+    def __init__(self):
+        self.__ld = LangDetect.instance()
 
     def detect(self, tweet):
         txt = tweet['text']
@@ -97,15 +127,15 @@ class TwitterLangDetect(LangDetect):
         hashtags = tweet['entities']['hashtags']
         media = tweet['entities']['media'] if 'media' in tweet['entities'] else []
         indices = [];
-        self.__appendIndices(indices, urls);
-        self.__appendIndices(indices, mentions);
-        self.__appendIndices(indices, hashtags);
-        self.__appendIndices(indices, media);
+        self.__appendIndices(indices, urls)
+        self.__appendIndices(indices, mentions)
+        self.__appendIndices(indices, hashtags)
+        self.__appendIndices(indices, media)
         indices = sorted(indices)
-        txt = self.__filterIndices(indices, txt);
+        txt = self.__filterIndices(indices, txt)
         txt = self.__filterRT(txt)
         #print "Without entities: " + txt
-        return super(TwitterLangDetect, self).detect(txt)
+        return self.__ld.detect(txt)
 
     def __appendIndices(self, indices, entities):
         for e in entities:
@@ -124,7 +154,7 @@ class TwitterLangDetect(LangDetect):
         return " ".join(txt.split("RT"))
 
 if __name__ == "__main__":
-    ld = LangDetect()
+    ld = LangDetect.instance()
     for text in [u"sin tendencia politica,ya que nunca fui ni sere guevarista, despues de recorrer largos kilometros en moto como el che,conociendo la gente simple﻿ y real de cada lugar puedo darme cuenta lo equivocado que creci, gracias a las dos ",
                  u"I didn't know about motorcycle diaries, but in Belgium (where I live) it's used often as sondtrack for road trip﻿ programs on tv",
                  u"Подборка самых лучших фотографий из сети за месяц:",

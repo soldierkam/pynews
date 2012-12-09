@@ -83,7 +83,7 @@ class StoppableThread(Thread):
                         self.onPause()
                         time.sleep(1)
                         continue
-                    logger.debug("Run part...")
+                    #logger.debug("Run part...")
                     self.runPart()
                 except NothingToDo:
                     logger.info("nothing to do")
@@ -191,4 +191,5 @@ if __name__ == "__main__":
     #data = [u"Threats and silence: the intimidation by Rangers fans | Alex Thomson's View", u"Threats and silence: the intimidation by Rangers fans", u"Alex Thomson's View", u"There are 151 comments on this post", u"Have your say", u"TOMOBLOG RANGERS INTIMIDATION"]
     #print longSubstrPair(data)
     #logger.info(fetchTitleByUrl("http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/"))
-    logger.info(fetchTitleByUrl("http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea"))
+    #logger.info(fetchTitleByUrl("http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea"))
+    logger.info(fetchTitleByUrl("http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html"))

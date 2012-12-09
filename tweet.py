@@ -4,14 +4,14 @@ from user import User
 
 class TweetText:
 
-    def __init__(self, t, urlBuilder):
+    def __init__(self, t, urlBuilder, userBuilder):
         self.__id = t["id"]
         self.__retweets = t["retweet_count"]
         self.__text = t["text"]
         self.__coordinates = t["coordinates"]["coordinates"] if t["coordinates"] is not None and "coordinates" in t["coordinates"] else None
         self.__createdAt = t["created_at"]
         self.__urls = []
-        self.__user = User(t["user"])
+        self.__user = userBuilder.build(t["user"])
         self.__createUrl__(urlBuilder, t['entities']['urls'])
         if 'media' in t['entities']:
             self.__createUrl__(urlBuilder, t['entities']['media'])

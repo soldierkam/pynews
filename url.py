@@ -13,8 +13,6 @@ from tools import StoppableThread, stringToDigest, longSubstrPair, fetchTitle
 from wx.lib.pubsub.pub import Publisher
 from BeautifulSoup import BeautifulSoup, Tag, CData, NavigableString
 
-ld = LangDetect()
-
 class PutMsg(object):
 
     def __init__(self, url):
@@ -43,6 +41,9 @@ class GetMsg(object):
     def getResponse(self):
         self.__mutex.acquire()
         return self.__response
+
+    def getUrl(self):
+        return self.__url
 
     def __str__(self):
         return u"{Get:" + unicode(self.__url) + u"}"
@@ -91,6 +92,7 @@ class UrlResolverCache(StoppableThread):
                     msg.setResponse(self.__shelve.get(msg.digest()))
                     self.__hits += 1
                 else:
+                    logger.info(u"Cannot find url in cache: " + unicode(msg.getUrl()))
                     msg.setResponse(None)
                 self.__requests += 1
             return
@@ -158,20 +160,7 @@ class UrlResolver():
                     self.__url.setDnsError()
                     tryAgainLater = True
                     logger.error(u"Try again: " + unicode(self.__url))
-                if self.correctInternetConnection():
-                    logger.error(u"Restart model")
-                    Publisher.sendMessage("model.start", data={"soft": True})
-                else:
-                    logger.error(u"Pause model")
-                    Publisher.sendMessage("model.pause", data={"soft": True})
         return tryAgainLater
-
-    def correctInternetConnection(self):
-        try:
-            response=urllib2.urlopen('http://www.google.pl',timeout=5)
-            return True
-        except:
-            return False
 
 class UrlStoppableResolver(UrlResolver):
 
@@ -198,9 +187,22 @@ class UrlResolverWorker(StoppableThread):
             putInQueue = resolver.resolve()
             if putInQueue:
                 logger.debug("Requeue url")
+                if self.correctInternetConnection():
+                    logger.error(u"Restart model")
+                    Publisher.sendMessage("model.start", data={"soft": True})
+                else:
+                    logger.error(u"Pause model")
+                    Publisher.sendMessage("model.pause", data={"soft": True})
                 self.__queue.put(url)
         except Empty:
             return
+
+    def correctInternetConnection(self):
+        try:
+            response=urllib2.urlopen('http://www.google.pl',timeout=5)
+            return True
+        except:
+            return False
 
     def atEnd(self):
         StoppableThread.atEnd(self)
@@ -251,7 +253,7 @@ class UrlResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if "text" in cachedValue and cachedValue["text"] and "htm" in cachedValue and cachedValue["htm"]:
+            if "htm" in cachedValue and cachedValue["htm"]:
                 url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
                 self.afterResolveUrl(url)
                 return
@@ -308,14 +310,15 @@ class UrlSyncResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if "text" in cachedValue and cachedValue["text"] and "htm" in cachedValue and cachedValue["htm"]:
+            if "htm" in cachedValue and cachedValue["htm"]:
                 url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
                 return
             elif "error" in cachedValue and cachedValue["error"]:
                 url.setError()
                 return
         resolver = UrlResolver(url, self, self.__resolverCache)
-        resolver.resolve()
+        if resolver.resolve():
+            url.setError()
 
 class UrlBuilder():
 
@@ -410,7 +413,7 @@ class Url:
 
     def getText(self):
         if self.__text is None:
-            raise ValueError("Text is None")
+            raise ValueError("Text is None: " + unicode(self.__expanded))
         return self.__text
 
     def setError(self):
@@ -435,7 +438,11 @@ class Url:
         logger.info("Url " + self.__url + " resolved")
         self.__text = text
         self.__html = html
-        self.__lang = ld.detect(text)
+        try:
+            self.__lang = LangDetect.instance().detect(text) if text else None
+        except BaseException as e:
+            logger.exception(u"lang detect error: " + unicode(text))
+            raise e
         self.__title = self._fetchTitle(html)
 
     def getHtml(self):

@@ -283,7 +283,7 @@ class Model():
     def __init__(self, mainDir, input, inlinedWebpageDir):
         self.__mainDir = mainDir
         self.__input = input
-        self.__langId = LangDetect()
+        self.__langId = LangDetect.instance()
         self.__inlinedWebpageDir = inlinedWebpageDir
         if not os.path.exists(self.__inlinedWebpageDir):
             os.makedirs(self.__inlinedWebpageDir)

@@ -1,3 +1,4 @@
+import threading
 from nltk import PorterStemmer, FreqDist
 from nltk.classify import apply_features
 from nltk.corpus import stopwords, LazyCorpusLoader, CategorizedPlaintextCorpusReader
@@ -62,6 +63,7 @@ class NewsClassificator():
 
     def __init__(self, dir, testDir=None, doTest = True, ignoreKlass = [], includeKlass = None):
         logger.info("Start building " + self.__class__.__name__)
+        self.__mutex = threading.Semaphore()
         self.__dir = dir
         self.__testDir = testDir or dir
         self.__filenameToUrl = self.__readLogFile()
@@ -110,10 +112,18 @@ class NewsClassificator():
 
 
     def classify(self, document):
-        return self.__classifier.classify(self.__featuresGenerator(document))
+        try:
+            self.__mutex.acquire()
+            return self.__classifier.classify(self.__featuresGenerator(document))
+        finally:
+            self.__mutex.release()
 
     def prob_classify(self, document):
-        return self.__classifier.prob_classify(self.__featuresGenerator(document))
+        try:
+            self.__mutex.acquire()
+            return self.__classifier.prob_classify(self.__featuresGenerator(document))
+        finally:
+            self.__mutex.release()
 
     def __readLogFile(self):
         results = {}
@@ -130,16 +140,18 @@ class NewsClassificator():
         f.close()
 
     def __parseLogLine(self, line):
-        if line.index(" : ") != 1:
+        if " : " in line:
             parts = line.split(" : ")
             filename = parts[0].strip().split("/")[1].replace(".html", ".txt")
             url = parts[1].strip()
             return filename, url
-        return None, None
+        else:
+            logger.error(u"Wrong line: " + unicode(line))
+            return None, None
 
     def __documents(self, klassId):
         l = self.__getDocuments(klassId, self.__dir)
-        logger.info("Read %d documents from %s (%s)" % (len(l), self.__dir, klassId))
+        logger.info(u"Read %d documents from %s (%s)" % (len(l), self.__dir, klassId))
         return l
 
     def __getDocuments(self, klassId, dir, limit=None):

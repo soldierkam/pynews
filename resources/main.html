@@ -5,44 +5,20 @@
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="google-site-verification" content="zH6XlTeXIHjFaGrwg3kiqQPvJ_nxFXI1O3ysbZITOAE" />
 
-    <title>TweetMap</title>
+    <title>PyNews</title>
     <!--<link href='http://fonts.googleapis.com/css?family=PT+Sans+Narrow&subset=latin,latin-ext' rel='stylesheet' type='text/css'>-->
+    <link type="text/css" href="static/treemap/base.css" rel="stylesheet" />
     <link type="text/css" href="static/treemap/Treemap.css" rel="stylesheet" />
+
     <link type="text/css" href="static/bootstrap/css/bootstrap.css" rel="stylesheet" />
     <link type="text/css" href="static/bootstrap/css/bootstrap-responsive.css" rel="stylesheet" />
-    <link type="text/css" href="static/treemap/base.css" rel="stylesheet" />
+
     <link REL="SHORTCUT ICON" HREF="static/favicon.ico">
 
     <script language="javascript" type="text/javascript" src="static/jquery/jquery-1.7.1.js"></script>
     <script language="javascript" type="text/javascript" src="static/jquery/jquery.ba-hashchange.js"></script>
-    <script language="javascript" type="text/javascript" src="static/treemap/DOMTreeMap.js"></script>
+    <script language="javascript" type="text/javascript" src="static/Jit/jit.js"></script>
     <script language="javascript" type="text/javascript" src="static/bootstrap/js/bootstrap.js"></script>
-    <script language="javascript" type="text/javascript" src="static/bootstrap/js/bootstrap-dropdown.js"></script>
-
-    <script type="text/javascript">
-        //var _gaq = _gaq || [];
-        //_gaq.push(['_setAccount', 'UA-30167465-1']);
-        //_gaq.push(['_trackPageview']);
-
-        //(function() {
-        //    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
-        //    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
-        //    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
-        //})();
-
-        //WebFontConfig = {
-        //    google: { families: [ 'PT+Sans+Narrow::latin,latin-ext' ] }
-        //};
-        //(function() {
-        //    var wf = document.createElement('script');
-        //    wf.src = ('https:' == document.location.protocol ? 'https' : 'http') +
-        //            '://ajax.googleapis.com/ajax/libs/webfont/1/webfont.js';
-        //    wf.type = 'text/javascript';
-        //    wf.async = 'true';
-        //    var s = document.getElementsByTagName('script')[0];
-        //    s.parentNode.insertBefore(wf, s);
-        //})();
-    </script>
 
     <style>
         body{
@@ -64,6 +40,10 @@
             margin-right:80px;
             margin-left:80px;
         }
+
+        .dropdown-menu label {
+            display: inline;
+        }​
 
     </style>
 
@@ -98,11 +78,13 @@
             </ul>
             <ul class="nav pull-right">
                 <li id="fat-menu" class="dropdown">
-                    <a href="#" class="dropdown-toggle" data-toggle="dropdown"><c:out value="${userProfile.screenName}"/><b class="caret"></b></a>
-                    <ul class="dropdown-menu">
-                        <li><a href="./signout">Sign out</a></li>
-                        <li class="divider"></li>
-                        <li><a href="#">Settings</a></li>
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown"><span id="screenName"></span><b class="caret"></b></a>
+                    <ul id="userMenu" class="dropdown-menu">
+                        <!--<li><a href="./signout">Sign out</a></li>-->
+                        <!--<li class="divider"></li>-->
+                        <!--<li><a href="#">Settings</a></li>-->
+                        <li class="user-logged"><a href="#settingsModal" data-toggle="modal">Settings...</a></li>
+                        <li class="divider user-logged">
                     </ul>
                 </li>
             </ul>
@@ -111,7 +93,7 @@
 </div>
 
 <div class="stretchedToMargin" style="padding-top: 60px;">
-    <div id="infovis"></div>
+    <div id="infovis" style="background-color: #666666"></div>
     <div id="loader">
         <div id="floatingBarsG" >
             <div class="blockG" id="rotateG_01">
@@ -134,6 +116,37 @@
     </div>
 </div>
 
+<!-- Settings modal -->
+<div id="settingsModal" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+    <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+        <h3 id="myModalLabel">Settings</h3>
+    </div>
+    <form class="form-horizontal">
+        <div class="modal-body">
+            <fieldset>
+                <div class="control-group">
+                    <label class="control-label" for="user">Screen name:</label>
+                    <div class="controls">
+                        <input id="user" type="text" placeholder="Put screen name of twitter user...">
+                    </div>
+                </div>
+                <div class="control-group">
+                    <div class="controls">
+                        <label class="checkbox">
+                            <input type="checkbox" name="autorefresh" id="autorefresh">Autorefresh
+                        </label>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" data-dismiss="modal" aria-hidden="true">Close</button>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
+    </form>
+
+</div>
 
 </body>
 </html>

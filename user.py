@@ -26,3 +26,27 @@ class User:
     def __str__(self):
         return u"{User:" + unicode(self.__id) + u",lang:" + unicode(self.__lang) + u",followers:" + unicode(self.__followersCount) + u")"
 
+    def __eq__(self, other):
+        if other is not User:
+            return False
+        return self.__id == other.__id
+
+    def __hash__(self):
+        return 3 + 7 * self.__id
+
+
+class UserBuilder:
+
+    def __init__(self, cache = {}):
+        self.__users = cache
+
+    def refreshCacheEntry(self, user):
+        k = str(user.id())
+        self.__users[k] = user
+
+    def build(self, u):
+        newUser = User(u)
+        k = str(newUser.id())
+        if newUser not in self.__users:
+            self.__users[k] = newUser
+        return self.__users[k]

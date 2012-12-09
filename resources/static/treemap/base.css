@@ -8,7 +8,7 @@ body {
     padding:0;
     //font-family: "Lucida Grande", Verdana;
     font-size: 0.9em;
-    text-align: center;
+    //text-align: center;
     background-color:#A2A2A2;
 }
 
@@ -110,6 +110,7 @@ a {
     height:90%;
     margin:auto;
     overflow:hidden;
+    text-align: center;
 }
 
 #floatingBarsG{

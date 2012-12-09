@@ -20,8 +20,6 @@ def getWords(data):
                 words.add(word)
     return words
 
-langDetect = LangDetect()
-
 def features(text):
     words = text.split()
     wordsCount = len(words)
@@ -38,7 +36,7 @@ filename = "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/tweets/cache"
 data = shelve.open(filename);
 #words = getWords(data)
 #print "Words: " + str(len(words))
-vectors = [features(item["text"]) for digest, item in data.items() if item["text"] and item["text"] != "ERROR" and langDetect.detect(item["text"]) is "en"]
+vectors = [features(item["text"]) for digest, item in data.items() if item["text"] and item["text"] != "ERROR" and LangDetect().instance().detect(item["text"]) is "en"]
 clusterer = cluster.KMeansClusterer(3, euclidean_distance, initial_means=[[10,40,0,1],[30,500,0,30],[120,1500,15,50]])
 #clusterer = cluster.GAAClusterer(2)
 #clusterer = cluster.EMClusterer([[10, 10, 10, 10, 10, 10],[3, 3, 3, 3, 3, 3]], bias=0.1, normalise=True)

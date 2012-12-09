@@ -333,7 +333,7 @@ if __name__ == "__main__":
     method = sys.argv[1]
     m = Manager(dir)
     if method == u"s":
-        m.store(dir)
+        m.store()
     elif method == u"r":
         for t in m.restore():
             print t

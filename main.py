@@ -1,4 +1,5 @@
 # -*- coding: utf-8 *-*
+import shelve
 from nltk import FreqDist
 from classifier import TxtClassificatorWrapper
 from lang import TwitterLangDetect
@@ -12,20 +13,22 @@ from tools import StoppableThread, NothingToDo
 from tweet import TweetText
 from url import UrlResolverManager, UrlBuilder, UrlException
 import os,cPickle
+from user import UserBuilder
+from user_tools import UserMgr
 from web_server import EmbeddedHttpServer
 
 tld = TwitterLangDetect()
 
 class ResolvedTweetQueue(StoppableThread):
 
-    def __init__(self, dir, classificator):
+    def __init__(self, streamDir, userDir, userBuilder):
         StoppableThread.__init__(self, self.__class__.__name__)
         self.__queue = Queue()
-        self.__classificator = classificator
+        self.__userBuilder = userBuilder
         self.__urls = []
-        self.__dir = dir
-        self.__server = EmbeddedHttpServer(self.__urls)
-        self.start()
+        self.__dir = os.path.join(streamDir, "tweets")
+        self.__userMgr = UserMgr(userDir)
+        self.__server = EmbeddedHttpServer(self.__urls, self.__userMgr)
 
     def tweetResolved(self, tweet):
         self.__queue.put(tweet)
@@ -37,10 +40,12 @@ class ResolvedTweetQueue(StoppableThread):
         try:
             tweet = self.__queue.get(block=True, timeout=3)
             for url in tweet.urls():
+                if url in self.__urls:
+                    continue
                 if url.isError():
                     logger.info(u"Tweet bad: wrong url: " + unicode(tweet) + u" " + unicode(url))
                     break
-                url.setDocumentClasses(self.__classificator.classify(url.getText()))
+                url.setDocumentClasses(TxtClassificatorWrapper.instance().classify(url.getText()))
                 if url.isRoot() or url.lang() != "en" or "short" in url.documentClasses():
                     logger.info(u"Tweet bad: " + unicode(tweet) + u" " + unicode(url))
                     break
@@ -56,6 +61,7 @@ class ResolvedTweetQueue(StoppableThread):
     def atEnd(self):
         StoppableThread.atEnd(self)
         self.__server.stop()
+        self.__userMgr.close()
         self.__store()
 
     def finalTweets(self):
@@ -83,16 +89,18 @@ class ResolvedTweetQueue(StoppableThread):
 
 class Model(StoppableThread):
 
-    def __init__(self, gui, stream, cacheDir):
+    def __init__(self, gui, stream, mainDir):
         StoppableThread.__init__(self, "Model")
         self.__iter = stream.__iter__()
         self.__elem = None
         self.__gui = gui;
         self.__softPause = True
         self.__urlFreq = FreqDist()
-        self.__classificator = TxtClassificatorWrapper()
-        self.__tweetResolvedListener = ResolvedTweetQueue(os.path.join(cacheDir, "tweets"), self.__classificator)
-        self.__urlResolver = UrlResolverManager(os.path.join(cacheDir, "urlResolverCache.db"), self.__tweetResolvedListener)
+        self.__userBuilder = UserBuilder()
+        streamDir=os.path.join(mainDir, "stream")
+        userDir=os.path.join(mainDir, "user")
+        self.__tweetResolvedListener = ResolvedTweetQueue(streamDir=streamDir, userDir=userDir, userBuilder=self.__userBuilder)
+        self.__urlResolver = UrlResolverManager(os.path.join(streamDir, "urlResolverCache.db"), self.__tweetResolvedListener)
         self.__urlBuilder = UrlBuilder(self.__urlFreq)
         self.__refreshGui = Event()
         self.__showProbDist = Event()
@@ -141,6 +149,7 @@ class Model(StoppableThread):
         logger.info("Preparing model...")
         self.__urlResolver.start()
         logger.info("Start analyzing tweets")
+        self.__tweetResolvedListener.start()
 
     def runPart(self):
         try:
@@ -148,10 +157,10 @@ class Model(StoppableThread):
             self.__elem = s
             if u'text' in s:
                 try:
-                    tweet = TweetText(s, self.__urlBuilder)
+                    tweet = TweetText(s, self.__urlBuilder, self.__userBuilder)
                     for url in tweet.urls():
                         self.__urlResolver.addUrlToQueue(url)
-                    retweeted = TweetText(s["retweeted_status"], self.__urlBuilder) if "retweeted_status" in s else None
+                    retweeted = TweetText(s["retweeted_status"], self.__urlBuilder, self.__userBuilder) if "retweeted_status" in s else None
                     if retweeted:
                         for url in tweet.urls():
                             self.__urlResolver.addUrlToQueue(url)
@@ -184,7 +193,7 @@ class Model(StoppableThread):
             url = self.__probDistUrl
             self.__showProbDist.clear()
             self.__probDistUrl = None
-            probDistI = self.__classificator.probDist(url.getText())
+            probDistI = TxtClassificatorWrapper.instance().probDist(url.getText())
 
     def stop(self):
         StoppableThread.stop(self)
@@ -192,12 +201,12 @@ class Model(StoppableThread):
         self.__tweetResolvedListener.stop()
 
 def main():
-    mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream"
-    tweetsDir = os.path.join(mainDir, "tweets")
+    mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews"
+    tweetsDir = os.path.join(mainDir, "stream", "tweets")
     logger.info("Start app")
     gui = Gui()
     mgr = StreamMgr(tweetsDir)
-    model = Model(gui, stream=mgr.restore(lastOnly=True), cacheDir=mainDir)
+    model = Model(gui, stream=mgr.restore(lastOnly=True), mainDir=mainDir)
     gui.run()
     model.stop()
     logger.info("Exit app")

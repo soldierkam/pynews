@@ -1,4 +1,5 @@
 # -*- coding: utf-8 *-*
+import threading
 from nltk import cluster
 from nltk.cluster import cosine_distance, euclidean_distance
 from numpy import array
@@ -40,8 +41,9 @@ class DocumentSizeClustering():
 
     def __init__(self, filename = "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/tweets/cache"):
         logger.info("Start building " + self.__class__.__name__)
+        self.__mutex = threading.Semaphore()
         data = shelve.open(filename, flag="r")
-        langDetect = LangDetect()
+        langDetect = LangDetect.instance()
         vectors = [features(item["text"]) for digest, item in data.items() if item["text"] and item["text"] != "ERROR" and langDetect.detect(item["text"]) is "en"]
         self.__clusterer = cluster.KMeansClusterer(3, euclidean_distance, initial_means=[[10,40,0,1],[30,500,0,30],[120,1500,15,50]])
         self.__clusterer.cluster(vectors)
@@ -64,8 +66,12 @@ class DocumentSizeClustering():
         self.__klassIdToLabel = {klassIdWithLabel[0]: klassIdWithLabel[1] for klassIdWithLabel in zip([item["klass"] for item in sortedKlass], ["short", "medium", "long"])}
 
     def classify(self, document):
-        docClass = self.__clusterer.classify(features(document))
-        return self.__klassIdToLabel[str(docClass)]
+        try:
+            self.__mutex.acquire()
+            docClass = self.__clusterer.classify(features(document))
+            return self.__klassIdToLabel[str(docClass)]
+        finally:
+            self.__mutex.release()
 
 if __name__ == "__main__":
     DocumentSizeClustering()
