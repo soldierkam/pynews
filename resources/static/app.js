@@ -601,7 +601,7 @@ $jit.TM.Squarified.implement({
     function updateTooltip(proc, phase){
         proc = Math.floor(proc);
         $('#fat-menu').tooltip("destroy");
-        $('#fat-menu').tooltip({placement: "right", html: true, title: "Done: " + proc + "% (phase: " + phase + "/4)"});
+        $('#fat-menu').tooltip({placement: "left", html: true, title: "Done: " + proc + "% (phase: " + phase + "/4)"});
     }
 
     function checkStatus(){
