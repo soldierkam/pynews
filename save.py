@@ -254,7 +254,7 @@ class Manager:
 
     def __init__(self, dir):
         self.__dir = dir
-        self.__infoLog = shelve.open(os.path.join(dir, "infoLog.db"))
+        self.__infoLog = shelve.open(os.path.join(dir, "infoLog.db"), protocol=-1)
 
     def store(self):
         filename = self.filenameWrite(dir)

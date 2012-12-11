@@ -50,7 +50,7 @@ class OAuthClient():
         settingsFile = os.path.join(dir, "oauth")
         if not os.path.exists(settingsFile):
             return None
-        map = shelve.open(settingsFile, "r")
+        map = shelve.open(settingsFile, "r", protocol=-1)
         conf = map["consumer_key"], map["consumer_secret"]
         map.close()
         return conf
@@ -60,7 +60,7 @@ class OAuthClient():
         if not os.path.exists(dir):
             os.mkdir(dir)
         settingsFile = os.path.join(dir, "oauth")
-        map = shelve.open(settingsFile, "c")
+        map = shelve.open(settingsFile, "c", protocol=-1)
         map["consumer_key"] = self.__auth.access_token.key
         map["consumer_secret"] = self.__auth.access_token.secret
         map.close()

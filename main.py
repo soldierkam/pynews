@@ -37,6 +37,9 @@ class ResolvedTweetQueue(StoppableThread):
     def atBegin(self):
         self.__server.start()
 
+    def getServerUrl(self):
+        return self.__server.getHref()
+
     def runPart(self):
         try:
             tweet = self.__queue.get(block=True, timeout=3)
@@ -96,10 +99,9 @@ class Model(StoppableThread):
         StoppableThread.__init__(self, "Model")
         self.__iter = stream.__iter__()
         self.__elem = None
-        self.__gui = gui;
+        self.__gui = gui
         self.__softPause = True
-        self.__urlFreq = FreqDist()
-        self.__urlBuilder = UrlBuilder(self.__urlFreq)
+        self.__urlBuilder = UrlBuilder()
         self.__userBuilder = UserBuilder()
         streamDir=os.path.join(mainDir, "stream")
         userDir=os.path.join(mainDir, "user")
@@ -112,6 +114,7 @@ class Model(StoppableThread):
         Publisher.subscribe(self.onResumeJob, "model.start")
         Publisher.subscribe(self.onRefreshGui, "model.refreshGui")
         Publisher.subscribe(self.onProbDist, "model.prob_dist")
+        Publisher.subscribe(self.onShowTreeMap, "model.showTreeMap")
         self.doPauseJob()
         self.start()
 
@@ -127,6 +130,10 @@ class Model(StoppableThread):
     def onProbDist(self, msg):
         self.__showProbDist.set()
         self.__probDistUrl = msg.data
+
+    def onShowTreeMap(self, msg):
+        import webbrowser
+        webbrowser.open(self.__tweetResolvedListener.getServerUrl())
 
     def doPauseJob(self):
         self.pauseJob()
@@ -185,7 +192,7 @@ class Model(StoppableThread):
             logger.info("Send data to GUI")
             self.__refreshGui.clear()
             data = {}
-            data["urls"] = [(urlSample, self.__urlFreq.freq(urlSample), urlSample in self.__tweetResolvedListener.finalUrls()) for urlSample in set(self.__urlFreq.samples())]
+            data["urls"] = self.__tweetResolvedListener.finalUrls()
             data["cache"] = self.__urlResolver.cacheHitRate()
             data["position"] = self.__iter.position()
             data["position_end"] = self.__iter.count()
@@ -213,7 +220,9 @@ def main():
         model = Model(gui, stream=mgr.restore(lastOnly=True), mainDir=mainDir)
     except BaseException:
         logger.exception("Cannot start app")
+        model.stop()
         sys.exit(1)
+        return
     gui.run()
     model.stop()
     logger.info("Exit app")

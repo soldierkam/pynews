@@ -376,12 +376,14 @@ class UserDataCrawler(StoppableThread):
         self.__token = self.__session["token"]
 
     def runPart(self):
-        userFeatures = self.__userMgr.doJob(self.__token, self.__userId, self.__screenName, self)
+        userFeatures = self.__userMgr.doJob(self.__token, self.__userId, self, self.__screenName)
         sessionKey = "features-" + userFeatures.screenName()
         self.__session[sessionKey] = userFeatures
         logger.info("Store user features in session[\"" + sessionKey +"\"")
         try:
             userFeatures.doJob()
+        except NothingToDo as e:
+            raise e
         except BaseException as e:
             logger.exception(u"UserFeatures.doJob error for " + unicode(self.__userId) + u" " + unicode(self.__screenName))
             raise e
@@ -398,10 +400,17 @@ class EmbeddedHttpServer(StoppableThread, SocketServer.TCPServer):
         self.__PORT = 8888
         SocketServer.TCPServer.__init__(self, ("", self.__PORT), PynewsHandler)
         self.__urls = urlsList
-        self.__settingsStore = shelve.open(os.path.join(os.path.expanduser("~/.pynews"), "settings.web.db"))
+        dir = os.path.expanduser("~/.pynews")
+        if not os.path.exists(dir):
+            os.mkdir(dir)
+        file = os.path.join(dir, "settings.web.db")
+        self.__settingsStore = shelve.open(file, protocol=-1)
 
     def urls(self):
         return self.__urls
+
+    def getHref(self):
+        return "http://localhost:" + str(self.__PORT)
 
     def createSessionCookie(self, handler):
         logger.info(u"Create new session cookie")
@@ -460,6 +469,7 @@ class EmbeddedHttpServer(StoppableThread, SocketServer.TCPServer):
     def saveSettings(self, who, settings):
         logger.info(u"Save settings for " + unicode(who) + u": " + unicode(settings))
         self.__settingsStore[who] = settings
+        self.__settingsStore.sync()
 
     def readSettings(self, who, default=None):
         return self.__settingsStore.get(who, default)

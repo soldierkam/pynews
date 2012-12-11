@@ -16,8 +16,8 @@ from user import UserBuilder
 class UserStore():
 
     def __init__(self, dir):
-        self.__friendsCache = shelve.open(os.path.join(dir, "friends.db"), "c")
-        self.__timelineCache = shelve.open(os.path.join(dir, "timeline.db"), "c")
+        self.__friendsCache = shelve.open(os.path.join(dir, "friends.db"), "c", protocol=-1)
+        self.__timelineCache = shelve.open(os.path.join(dir, "timeline.db"), "c", protocol=-1)
         self.__baseUrl = "https://api.twitter.com/1.1"
 
     def _accessToken(self):
@@ -132,7 +132,7 @@ class UserFeatures():
         return self
 
     def __breakIfStopped(self):
-        if self.__stoppable and self.__stoppable.isStopping:
+        if self.__stoppable and self.__stoppable.isStopping():
             raise NothingToDo()
 
     def __getTimelineFeatures(self, timeline):
@@ -166,7 +166,7 @@ class UserFeatures():
         for url in urls:
             self.__breakIfStopped()
             if not url.isError():
-                logger.debug(u"Classify" + unicode(url.getUrl()))
+                logger.debug(u"Classify " + unicode(url.getUrl()))
                 url2labels[url.getExpandedUrl()] = self._classifier().classify(url.getText())
             ui += 1
             self.__proc = 100 * float(ui) / float(len(urls))

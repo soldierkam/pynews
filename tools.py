@@ -102,8 +102,8 @@ class StoppableThread(Thread):
     def onPause(self):
         if self.__msgCount % 60 == 0:
             logger.debug("Paused")
-            self.__msgCount += 1
-            self.__msgCount %= 60
+        self.__msgCount += 1
+        self.__msgCount %= 60
 
     def runPart(self):
         pass

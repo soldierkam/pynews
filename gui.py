@@ -22,7 +22,7 @@ class UrlsGrid(Grid):
         self.__sortDirectionDesc = True
         self.CreateGrid(0, 7)
         self.SetColLabelValue(0, "URL")
-        self.SetColLabelValue(1, "Freq. (‰)")
+        self.SetColLabelValue(1, "Tweets count")
         self.SetColLabelValue(2, "Expanded")
         self.SetColLabelValue(3, "Lang")
         self.SetColLabelValue(4, "Class")
@@ -39,16 +39,13 @@ class UrlsGrid(Grid):
     def _doUpdate(self):
         i = 0
         self._sort()
-        self._filterUrls()
         self._prepareGrid()
-        for url, freq, isFinal in self.__urls:
-            self._setRow(i, url, freq, isFinal)
+        for url in self.__urls:
+            self._setRow(i, url, len(url.tweets()))
             i += 1
 
-    def _urlSortFunction(self, urlFreqAndFinal):
-        url = urlFreqAndFinal[0]
-        freq = urlFreqAndFinal[1]
-        isFinal = urlFreqAndFinal[2]
+    def _urlSortFunction(self, url):
+        freq = len(url.tweets())
         if self.__sortColumnId == 0:
             return url.getUrl()
         elif self.__sortColumnId == 1:
@@ -66,9 +63,6 @@ class UrlsGrid(Grid):
     def _sort(self):
         self.__urls = sorted(self.__urls, key=self._urlSortFunction, reverse=self.__sortDirectionDesc)
 
-    def _filterUrls(self):
-        self.__urls = [(url, freq, isFinal) for url, freq, isFinal in self.__urls if not self.__onlyFinalUrls or isFinal]
-
     def _prepareGrid(self):
         diff = len(self.__urls) - self.NumberRows
         if diff > 0:
@@ -76,10 +70,10 @@ class UrlsGrid(Grid):
         else:
             self.DeleteRows(numRows=abs(diff))
 
-    def _setRow(self, i, url, freq, isFinal):
+    def _setRow(self, i, url, count):
         self.SetRowLabelValue(i, unicode(i+1))
         self.SetCellValue(i, 0, url.getUrl())
-        self.SetCellValue(i, 1, unicode(freq * 1000))
+        self.SetCellValue(i, 1, unicode(count))
         self.SetCellValue(i, 2, url.getExpandedUrl())
 
         self.SetCellValue(i, 3, str(url.lang()))
@@ -89,7 +83,7 @@ class UrlsGrid(Grid):
         self.SetCellBackgroundColour(i, 4, self.__colourForClass(url.documentClasses()))
 
         self.SetCellValue(i, 5, unicode(url.mark()))
-        self.SetCellValue(i, 6, unicode(url.getTitle()) if isFinal else u"")
+        self.SetCellValue(i, 6, unicode(url.getTitle()))
 
 
     def setOnlyFinalUrls(self, value):
@@ -161,8 +155,8 @@ class Gui(wx.Frame):
 
     def __buildMenuView(self):
         menu = wx.Menu()
-        self.showOnlyFinalUrls = menu.Append(wx.ID_ANY, 'Show only final', 'Show only final', kind=wx.ITEM_CHECK)
-        self.Bind(wx.EVT_MENU, self.onShowFinalUrlsToggle, self.showOnlyFinalUrls)
+        self.showTreeMap = menu.Append(wx.ID_ANY, 'Show TreeMap', 'Show TreeMap')
+        self.Bind(wx.EVT_MENU, self.onShowTreeMap, self.showTreeMap)
         return menu
 
     def run(self):
@@ -193,9 +187,8 @@ class Gui(wx.Frame):
         self.menuStartPause.SetText("Pause")
         self.timer.Start(1000 * 10)
 
-    def onShowFinalUrlsToggle(self, event):
-        self.grid.setOnlyFinalUrls(event.Selection == 1)
-        self.onRefreshMenuClick(event)
+    def onShowTreeMap(self, event):
+        Publisher.sendMessage("model.showTreeMap")
 
     def onStartPauseButtonClick(self, event):
         if self.__paused:

@@ -61,7 +61,7 @@ class UrlResolverCache(StoppableThread):
         self.__msgCount = 0
 
     def atBegin(self):
-        self.__shelve = shelve.open(self.__filename);
+        self.__shelve = shelve.open(self.__filename, protocol=-1)
         self.__onLoadSize = len(self.__shelve)
         self.__size = self.__onLoadSize
         logger.info("Load shelve from " + self.__filename + ": urls=" + unicode(self.__onLoadSize))
@@ -78,25 +78,32 @@ class UrlResolverCache(StoppableThread):
         try:
             if self.__msgCount % 60 == 0:
                 logger.debug("Fetch msg... (qsize=" + str(self.__queue.qsize()) + ")")
+                self.__shelve.sync()
             self.__msgCount += 1
             self.__msgCount %= 60
             msg = self.__queue.get(block=True, timeout=3)
             logger.debug("Msg: " + str(msg))
             if type(msg) is PutMsg:
                 resolvedUrl = msg.getUrl()
-                logger.debug("Put extracted url text in shelve: " + resolvedUrl.getUrl())
+                logger.debug(u"Put extracted url text in shelve: " + unicode(resolvedUrl))
                 self.__shelve[resolvedUrl.getUrlDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(),
                                                              "htm": None if resolvedUrl.isError() else resolvedUrl.getHtml(),
                                                              "url": resolvedUrl.getUrl(),
                                                              "error": resolvedUrl.isError()}
                 self.__size += 1
             elif type(msg) is GetMsg:
+                cv = None
                 if self.__shelve.has_key(msg.digest()):
-                    msg.setResponse(self.__shelve.get(msg.digest()))
-                    self.__hits += 1
+                    cv = self.__shelve.get(msg.digest())
+                    if "htm" not in cv:
+                        logger.info(u"Cached value do not contains data: " + unicode(cv))
+                        del self.__shelve[msg.digest()]
+                        cv = None
+                    else:
+                        self.__hits += 1
                 else:
                     logger.info(u"Cannot find url in cache: " + unicode(msg.getUrl()))
-                    msg.setResponse(None)
+                msg.setResponse(cv)
                 self.__requests += 1
             return
         except Empty:
@@ -107,7 +114,6 @@ class UrlResolverCache(StoppableThread):
 
     def atEnd(self):
         StoppableThread.atEnd(self)
-        self.__shelve.sync()
         self.__shelve.close()
 
 class UrlResolver():
@@ -217,11 +223,11 @@ class UrlResolverWorker(StoppableThread):
 class UrlResolverManager():
 
     def __init__(self, cacheFilename, tweetResolverListener):
-        self.__queue = Queue(maxsize=200)
+        self.__queue = Queue(maxsize=50)
         self.__workers = []
         self.__tweetResolverListener = tweetResolverListener
         self.__resolverCache = UrlResolverCache(cacheFilename)
-        for i in range(0,3):
+        for i in range(0,10):
             self.__workers.append(UrlResolverWorker(self, self.__queue, self.__resolverCache, i))
         self.__lastReportedQueueSize = None
 
@@ -259,19 +265,17 @@ class UrlResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if "htm" in cachedValue and cachedValue["htm"]:
-                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
-                self.afterResolveUrl(url)
-                return
             elif "error" in cachedValue and cachedValue["error"]:
                 url.setError()
                 self.afterResolveUrl(url)
                 return
             else:
-                logger.info(u"Cached value do not contains data: " + unicode(cachedValue))
+                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
+                self.afterResolveUrl(url)
+                return
         self.__queue.put(url, timeout=3)
         s = self.__queue.qsize()
-        if s % 20 == 0 and s > 20 and self.__lastReportedQueueSize != s:
+        if s % 10 == 0 and s > 10 and self.__lastReportedQueueSize != s:
             self.__lastReportedQueueSize = s
             logger.warning("Queue size is too big: " + unicode(s))
 
@@ -316,11 +320,11 @@ class UrlSyncResolverManager():
         if cachedValue:
             if url.getUrl() != cachedValue["url"]:
                 raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            if "htm" in cachedValue and cachedValue["htm"]:
-                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
-                return
             elif "error" in cachedValue and cachedValue["error"]:
                 url.setError()
+                return
+            else:
+                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
                 return
         resolver = UrlResolver(url, self, self.__resolverCache)
         if resolver.resolve():
@@ -328,8 +332,7 @@ class UrlSyncResolverManager():
 
 class UrlBuilder():
 
-    def __init__(self, freqDist):
-        self.__freqDist = freqDist
+    def __init__(self):
         self.__mutex = threading.Semaphore()
         self.__urls = {}
         self.__deleted = set()
@@ -338,9 +341,6 @@ class UrlBuilder():
         try:
             logger.info(u"Delete url " + unicode(url))
             self.__mutex.acquire()
-            if url in self.__freqDist.keys():
-                del self.__freqDist[url]
-            self.__freqDist._reset_caches()
             self.__deleted.add(url.getUrlDigest())
             logger.info(u"Delete url: done!")
         finally:
@@ -364,7 +364,6 @@ class UrlBuilder():
                 u.linkWithTweet(tweet)
             if not isinstance(u, Url):
                 raise ValueError(u"Wrong object type " + unicode(u))
-            self.__freqDist.inc(u)
             return u
         finally:
             self.__mutex.release()

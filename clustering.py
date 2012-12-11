@@ -40,7 +40,7 @@ class DocumentSizeClustering():
     def __init__(self, filename = "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/tweets/cache"):
         logger.info("Start building " + self.__class__.__name__)
         self.__mutex = threading.Semaphore()
-        data = shelve.open(filename, flag="r")
+        data = shelve.open(filename, protocol=-1, flag="r")
         langDetect = LangDetect.instance()
         vectors = [features(item["text"]) for digest, item in data.items() if item["text"] and item["text"] != "ERROR" and langDetect.detect(item["text"]) is "en"]
         self.__clusterer = cluster.KMeansClusterer(3, euclidean_distance, initial_means=[[10,40,0,1],[30,500,0,30],[120,1500,15,50]])
