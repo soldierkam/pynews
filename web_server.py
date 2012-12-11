@@ -6,7 +6,6 @@ import cgi
 import os
 import random
 import shelve
-import urllib2
 from threading import Semaphore
 import Cookie
 import urlparse
@@ -377,7 +376,7 @@ class UserDataCrawler(StoppableThread):
         self.__token = self.__session["token"]
 
     def runPart(self):
-        userFeatures = self.__userMgr.doJob(self.__token, self.__userId, self.__screenName)
+        userFeatures = self.__userMgr.doJob(self.__token, self.__userId, self.__screenName, self)
         sessionKey = "features-" + userFeatures.screenName()
         self.__session[sessionKey] = userFeatures
         logger.info("Store user features in session[\"" + sessionKey +"\"")

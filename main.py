@@ -1,6 +1,6 @@
 # -*- coding: utf-8 *-*
-import shelve
 from nltk import FreqDist
+import sys
 from classifier import TxtClassificatorWrapper
 from lang import TwitterLangDetect
 from gui import Gui
@@ -21,9 +21,10 @@ tld = TwitterLangDetect()
 
 class ResolvedTweetQueue(StoppableThread):
 
-    def __init__(self, streamDir, userDir, userBuilder):
+    def __init__(self, streamDir, userDir, userBuilder, urlBuilder):
         StoppableThread.__init__(self, self.__class__.__name__)
         self.__queue = Queue()
+        self.__urlBuilder = urlBuilder
         self.__userBuilder = userBuilder
         self.__urls = []
         self.__dir = os.path.join(streamDir, "tweets")
@@ -44,10 +45,12 @@ class ResolvedTweetQueue(StoppableThread):
                     continue
                 if url.isError():
                     logger.info(u"Tweet bad: wrong url: " + unicode(tweet) + u" " + unicode(url))
+                    self.__urlBuilder.delete(url)
                     break
                 url.setDocumentClasses(TxtClassificatorWrapper.instance().classify(url.getText()))
                 if url.isRoot() or url.lang() != "en" or "short" in url.documentClasses():
                     logger.info(u"Tweet bad: " + unicode(tweet) + u" " + unicode(url))
+                    self.__urlBuilder.delete(url)
                     break
                 logger.info(u"Tweet good: " + unicode(tweet) + u" " + unicode(url))
                 logger.info(u"URL: " + unicode(url))
@@ -96,12 +99,12 @@ class Model(StoppableThread):
         self.__gui = gui;
         self.__softPause = True
         self.__urlFreq = FreqDist()
+        self.__urlBuilder = UrlBuilder(self.__urlFreq)
         self.__userBuilder = UserBuilder()
         streamDir=os.path.join(mainDir, "stream")
         userDir=os.path.join(mainDir, "user")
-        self.__tweetResolvedListener = ResolvedTweetQueue(streamDir=streamDir, userDir=userDir, userBuilder=self.__userBuilder)
+        self.__tweetResolvedListener = ResolvedTweetQueue(streamDir=streamDir, userDir=userDir, userBuilder=self.__userBuilder, urlBuilder=self.__urlBuilder)
         self.__urlResolver = UrlResolverManager(os.path.join(streamDir, "urlResolverCache.db"), self.__tweetResolvedListener)
-        self.__urlBuilder = UrlBuilder(self.__urlFreq)
         self.__refreshGui = Event()
         self.__showProbDist = Event()
         self.__probDistUrl = None
@@ -204,9 +207,13 @@ def main():
     mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews"
     tweetsDir = os.path.join(mainDir, "stream", "tweets")
     logger.info("Start app")
-    gui = Gui()
-    mgr = StreamMgr(tweetsDir)
-    model = Model(gui, stream=mgr.restore(lastOnly=True), mainDir=mainDir)
+    try:
+        gui = Gui()
+        mgr = StreamMgr(tweetsDir)
+        model = Model(gui, stream=mgr.restore(lastOnly=True), mainDir=mainDir)
+    except BaseException:
+        logger.exception("Cannot start app")
+        sys.exit(1)
     gui.run()
     model.stop()
     logger.info("Exit app")

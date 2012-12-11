@@ -56,7 +56,9 @@ class StoppableThread(Thread):
         name = name or self.__class__.__name__
         Thread.__init__(self, name=name)
         self.__stop = Event()
+        self.error = Event()
         self.__pauseEvent = Event()
+        self.__msgCount = 0
 
     def stop(self):
         self.__stop.set()
@@ -65,6 +67,7 @@ class StoppableThread(Thread):
         return self.__stop.isSet()
 
     def pauseJob(self):
+        self.__msgCount = 0
         self.__pauseEvent.set()
 
     def continueJob(self):
@@ -89,6 +92,7 @@ class StoppableThread(Thread):
                     logger.info("nothing to do")
                     break
                 except BaseException as exc:
+                    self.error.set()
                     logger.exception("error")
                     break
             self.atEnd()
@@ -96,7 +100,10 @@ class StoppableThread(Thread):
             logger.exception("Fatal error")
 
     def onPause(self):
-        logger.debug("Paused")
+        if self.__msgCount % 60 == 0:
+            logger.debug("Paused")
+            self.__msgCount += 1
+            self.__msgCount %= 60
 
     def runPart(self):
         pass

@@ -1,8 +1,6 @@
 import os
 import re
 import shelve
-import threading
-import thread
 from time import sleep
 import tweepy
 from logger import logger

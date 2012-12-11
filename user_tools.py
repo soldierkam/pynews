@@ -2,15 +2,13 @@
 import os
 import shelve
 from nltk import FreqDist
-import pycountry
-import tweepy
 import twitter
 from twitter import TwitterError
 from cache import CacheOp
 from classifier import TxtClassificatorWrapper
 from logger import logger
-from news import tokenize
 from oauth import OAuthClient
+from tools import NothingToDo
 from tweet import TweetText
 from url import UrlSyncResolverManager, UrlBuilder
 from user import UserBuilder
@@ -83,7 +81,7 @@ PHASE={
 
 class UserFeatures():
 
-    def __init__(self, userStore, urlResolver, fd, userId, screenName, token):
+    def __init__(self, userStore, urlResolver, fd, userId, screenName, token, stoppable):
         self.__store = userStore;
         self.__id = userId
         self.__screenName = screenName
@@ -95,6 +93,7 @@ class UserFeatures():
         self.__catFreq = None
         self.__langFreq = None
         self.__friends = None
+        self.__stoppable = stoppable
 
     def getTimeline(self):
         u = self.__id or self.__screenName
@@ -132,6 +131,10 @@ class UserFeatures():
         logger.info(u"Friends:" + ','.join(map(unicode, self.__friends)))
         return self
 
+    def __breakIfStopped(self):
+        if self.__stoppable and self.__stoppable.isStopping:
+            raise NothingToDo()
+
     def __getTimelineFeatures(self, timeline):
         logger.info(u"Get timeline features")
         tweets = []
@@ -149,6 +152,7 @@ class UserFeatures():
         ti = 0
         for tweet in tweets:
             for url in tweet.urls():
+                self.__breakIfStopped()
                 self.__urlResolver.addUrlToQueue(url)
                 urls.append(url)
             logger.info(u"Tweet:" + unicode(tweet))
@@ -160,6 +164,7 @@ class UserFeatures():
         url2labels = {}
         ui = 0
         for url in urls:
+            self.__breakIfStopped()
             if not url.isError():
                 logger.debug(u"Classify" + unicode(url.getUrl()))
                 url2labels[url.getExpandedUrl()] = self._classifier().classify(url.getText())
@@ -182,7 +187,7 @@ class UserFeatures():
         for u in urls:
             langFreq.inc(u.lang())
         self.__langFreq = langFreq.items()
-        logger.info(u"Langs: " + unicode(langFreq.items()))
+        logger.info(u"Languages: " + unicode(langFreq.items()))
 
         return labelsFreqValues
 
@@ -203,8 +208,8 @@ class UserMgr():
         self.__urlResolverMgr.start()
         self.__fd = FreqDist()
 
-    def doJob(self, token, userId, screenName=None):
-        return UserFeatures(self.__userStore, self.__urlResolverMgr, self.__fd, userId, screenName, token)
+    def doJob(self, token, userId, stoppable, screenName=None):
+        return UserFeatures(self.__userStore, self.__urlResolverMgr, self.__fd, userId, screenName, token, stoppable)
 
     def close(self):
         self.__urlResolverMgr.stop()

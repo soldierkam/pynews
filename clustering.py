@@ -1,13 +1,11 @@
 # -*- coding: utf-8 *-*
 import threading
 from nltk import cluster
-from nltk.cluster import cosine_distance, euclidean_distance
+from nltk.cluster import euclidean_distance
 from numpy import array
 import shelve
 import re
-import urlparse
 from nltk.corpus import stopwords
-import codecs
 from lang import LangDetect
 from logger import logger
 

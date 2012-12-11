@@ -5,9 +5,8 @@ from nltk.corpus import stopwords, LazyCorpusLoader, CategorizedPlaintextCorpusR
 import operator
 from google_rss import HEADLINES, SPOTLIGHT, NATION, SPORT, POLITICS
 from logger import logger
-from nltk import NaiveBayesClassifier, ConfusionMatrix, KMeansClusterer
+from nltk import NaiveBayesClassifier, ConfusionMatrix
 import random, nltk
-from matplotlib.mlab import PCA
 import numpy as np
 
 __author__ = 'soldier'
@@ -36,19 +35,6 @@ class FeatureGenerator():
         bestFeatures = sorted(featureToMaxRatio.iteritems(), key=operator.itemgetter(1), reverse=True)
         logger.info(u"Best features: " + unicode(bestFeatures[:100]))
         self.__features = [item[0] for item in bestFeatures[:3000]]
-
-    def __getFeatureValue(self, tokens, feature):
-        #return tokens.count(feature)
-        return feature in tokens
-
-    def __reduceFeatures(self, documents):
-        arr = []
-        for doc in documents:
-            tokens = tokenize(doc)
-            arr.append([self.__getFeatureValue(tokens, feature) for feature in self.__features])
-        arr = np.array(arr)
-        PCA(arr)
-
 
     def __getFeatures(self, document):
         tokens = tokenize(document)

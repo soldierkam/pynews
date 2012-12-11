@@ -33,8 +33,13 @@ class TxtClassificatorWrapper():
     def classify(self, txt):
         if "fake_run" in os.environ:
             self.__i += 1
-            self.__i = self.__i % 2
-            return ["long", "p" if self.__i == 1 else "b"]
+            self.__i = self.__i % 3
+            if self.__i == 1:
+                return ["long", "p"]
+            elif self.__i == 2:
+                return ["long", "b"]
+            else:
+                return ["short", "p"]
         try:
             return self.__documentSizeClassificator.classify(txt), self.__newsClassificator.classify(txt)
         except BaseException as e:
@@ -42,6 +47,8 @@ class TxtClassificatorWrapper():
             raise e
 
     def probDist(self, txt):
+        if "fake_run" in os.environ:
+            return None
         return self.__newsClassificator.prob_classify(txt)
 
 class Init(StoppableThread):

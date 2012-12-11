@@ -1,6 +1,7 @@
 # -*- coding: utf-8 *-*
 from geolocation import Position
-from user import User
+from logger import logger
+from url import UrlException
 
 class TweetText:
 
@@ -18,7 +19,10 @@ class TweetText:
 
     def __createUrl__(self, urlBuilder, entities):
         for urlEntity in entities:
-            urlBuilder(self, urlEntity)
+            try:
+                urlBuilder(self, urlEntity)
+            except UrlException as ex:
+                logger.info(unicode(ex))
 
     def addUrl(self, url):
         self.__urls.append(url)

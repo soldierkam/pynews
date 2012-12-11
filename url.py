@@ -1,17 +1,16 @@
 # -*- coding: utf-8 *-*
 from Queue import Queue, Empty
-import re
 import shelve
 from threading import Semaphore
+import threading
 from urllib2 import URLError, HTTPError
 import urllib2
 from urlparse import urlparse
 from boilerpipe.extract import Extractor
 from lang import LangDetect
 from logger import logger
-from tools import StoppableThread, stringToDigest, longSubstrPair, fetchTitle
+from tools import StoppableThread, stringToDigest, fetchTitle
 from wx.lib.pubsub.pub import Publisher
-from BeautifulSoup import BeautifulSoup, Tag, CData, NavigableString
 
 class PutMsg(object):
 
@@ -59,6 +58,7 @@ class UrlResolverCache(StoppableThread):
         self.__requests = 0
         self.__onLoadSize = None
         self.__size = 0
+        self.__msgCount = 0
 
     def atBegin(self):
         self.__shelve = shelve.open(self.__filename);
@@ -76,7 +76,10 @@ class UrlResolverCache(StoppableThread):
 
     def runPart(self):
         try:
-            logger.debug("Fetch msg... (qsize=" + str(self.__queue.qsize()) + ")")
+            if self.__msgCount % 60 == 0:
+                logger.debug("Fetch msg... (qsize=" + str(self.__queue.qsize()) + ")")
+            self.__msgCount += 1
+            self.__msgCount %= 60
             msg = self.__queue.get(block=True, timeout=3)
             logger.debug("Msg: " + str(msg))
             if type(msg) is PutMsg:
@@ -160,6 +163,9 @@ class UrlResolver():
                     self.__url.setDnsError()
                     tryAgainLater = True
                     logger.error(u"Try again: " + unicode(self.__url))
+                else:
+                    self.__url.setError()
+                    self.__mgr.afterResolveUrl(self.__url)
         return tryAgainLater
 
 class UrlStoppableResolver(UrlResolver):
@@ -324,23 +330,44 @@ class UrlBuilder():
 
     def __init__(self, freqDist):
         self.__freqDist = freqDist
+        self.__mutex = threading.Semaphore()
         self.__urls = {}
+        self.__deleted = set()
+
+    def delete(self, url):
+        try:
+            logger.info(u"Delete url " + unicode(url))
+            self.__mutex.acquire()
+            if url in self.__freqDist.keys():
+                del self.__freqDist[url]
+            self.__freqDist._reset_caches()
+            self.__deleted.add(url.getUrlDigest())
+            logger.info(u"Delete url: done!")
+        finally:
+            self.__mutex.release()
 
     def __call__(self, *args, **kwargs):
-        urlEntity = args[1]
-        tweet = args[0]
-        u = Url(urlEntity)
-        key = u.getUrlDigest()
-        if self.__urls.has_key(key):
-            u = self.__urls.get(key)
-            u.linkWithTweet(tweet)
-        else:
-            self.__urls[key] = u
-            u.linkWithTweet(tweet)
-        if not isinstance(u, Url):
-            raise ValueError(u"Wrong object type " + unicode(u))
-        self.__freqDist.inc(u)
-        return u
+        try:
+            self.__mutex.acquire()
+            urlEntity = args[1]
+            tweet = args[0]
+            u = Url(urlEntity)
+            key = u.getUrlDigest()
+            if key in self.__deleted:
+                raise UrlException(urlEntity, "Deleted")
+
+            if self.__urls.has_key(key):
+                u = self.__urls.get(key)
+                u.linkWithTweet(tweet)
+            else:
+                self.__urls[key] = u
+                u.linkWithTweet(tweet)
+            if not isinstance(u, Url):
+                raise ValueError(u"Wrong object type " + unicode(u))
+            self.__freqDist.inc(u)
+            return u
+        finally:
+            self.__mutex.release()
 
 class Url:
 
@@ -351,6 +378,7 @@ class Url:
         self.__validateUrl(self.__url, entity)
         self.__validateUrl(self.__expanded, entity)
         self.__text = None
+        self.__title = None
         self.__html = None
         self.__error = False
         self.__dnsError = False
