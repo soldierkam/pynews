@@ -9,6 +9,7 @@ from urlparse import urlparse
 from boilerpipe.extract import Extractor
 from lang import LangDetect
 from logger import logger
+import sqlite
 from tools import StoppableThread, stringToDigest, fetchTitle
 from wx.lib.pubsub.pub import Publisher
 
@@ -61,7 +62,7 @@ class UrlResolverCache(StoppableThread):
         self.__msgCount = 0
 
     def atBegin(self):
-        self.__shelve = shelve.open(self.__filename, protocol=-1)
+        self.__shelve = sqlite.open(self.__filename, protocol=-1)
         self.__onLoadSize = len(self.__shelve)
         self.__size = self.__onLoadSize
         logger.info("Load shelve from " + self.__filename + ": urls=" + unicode(self.__onLoadSize))

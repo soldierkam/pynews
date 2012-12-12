@@ -204,7 +204,7 @@ class UserMgr():
 
     def __init__(self, mainDir):
         self.__userStore = UserStore(mainDir)
-        self.__urlResolverMgr = UrlSyncResolverManager(os.path.join(mainDir, "urlResolverCache.db"))
+        self.__urlResolverMgr = UrlSyncResolverManager(os.path.join(mainDir, "urlResolverCache.db2"))
         self.__urlResolverMgr.start()
         self.__fd = FreqDist()
 

@@ -106,7 +106,7 @@ class Model(StoppableThread):
         streamDir=os.path.join(mainDir, "stream")
         userDir=os.path.join(mainDir, "user")
         self.__tweetResolvedListener = ResolvedTweetQueue(streamDir=streamDir, userDir=userDir, userBuilder=self.__userBuilder, urlBuilder=self.__urlBuilder)
-        self.__urlResolver = UrlResolverManager(os.path.join(streamDir, "urlResolverCache.db"), self.__tweetResolvedListener)
+        self.__urlResolver = UrlResolverManager(os.path.join(streamDir, "urlResolverCache.db2"), self.__tweetResolvedListener)
         self.__refreshGui = Event()
         self.__showProbDist = Event()
         self.__probDistUrl = None
