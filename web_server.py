@@ -49,71 +49,6 @@ ext2mime = {
 BLACK = u"#000000"
 GRAY = u"#444444"
 
-class NewsMapNode:
-
-    def __init__(self):
-        self.__title = None
-        self.__html = None
-        self.__text = None
-        self.__mark = 0
-        self.__tweets = None
-        self.__href = None
-        self.__cat = None
-
-    def setCat(self, cat):
-        self.__cat = cat
-
-    def getCat(self):
-        return self.__cat
-
-    def setTweets(self, tweets):
-        self.__tweets = tweets
-
-    def getTweets(self):
-        return self.__tweets
-
-    def setHtml(self, html):
-        self.__html = html
-
-    def getHtml(self):
-        return self.__html
-
-    def setText(self, text):
-        self.__text = text
-
-    def getText(self):
-        return self.__text
-
-    def setMark(self, a):
-        self.__mark = a
-
-    def getMark(self):
-        return self.__mark
-
-    def getHref(self):
-        return self.__href
-
-    def setHref(self, href):
-        self.__href = href
-
-    def getTitle(self):
-        return self.__title
-
-    def setTitle(self, title):
-        self.__title = title
-
-    def dump(self):
-        return {
-            u"title": self.getTitle(),
-            u"mark": self.getMark(),
-            u"href": self.getHref(),
-            #u"html": self.getHtml(),
-            u"text": self.getText(),
-            u"cat": self.__cat,
-            u"tweets": [t.dump() for t in self.getTweets()]
-        }
-
-
 def _buildApiUsingSession(session):
     auth = tweepy.OAuthHandler(os.environ["consumer_key"], os.environ["consumer_secret"], callback="http://localhost:8888/callback.html", secure=True)
     auth.set_access_token(session['token'].key, session["token"].secret)
@@ -127,35 +62,8 @@ class PynewsHandler(BaseHTTPRequestHandler):
 
     def __buildData(self, label):
         cat = label2code.get(label)
-        allUrls = self.server.urls()
-        selectedUrls = allUrls if cat is None else [url for url in allUrls if cat in url.documentClasses()]
-
-        children = []
-        for url in selectedUrls:
-            child = NewsMapNode()
-            child.setMark(url.mark())
-            child.setTitle(url.getTitle())
-            child.setText(url.getText())
-            child.setHtml(url.getHtml())
-            child.setHref(url.getExpandedUrl())
-            child.setTweets(url.tweets())
-            child.setCat(self.__findLabel(url))
-            children.append(child.dump())
-        return children
-
-    def __findLabel(self, url):
-        cats = url.documentClasses()
-        for c in cats:
-            if c not in ["short", "medium", "long"]:
-                return c
-        raise ValueError(unicode(cats))
-
-    def __buildRootNode(self, label):
-        root = NewsMapNode()
-        root.setId(u"root-" + unicode(label))
-        root.setTitle(unicode(label))
-        root.setTweets([])
-        return root
+        selectedUrls = self.server.urls(cat)
+        return selectedUrls
 
     def __buildUserData(self, screenName=None):
         session = self.server.getSession(self)
@@ -227,7 +135,8 @@ class PynewsHandler(BaseHTTPRequestHandler):
         self.end_headers()
         d = self.__buildData(self.params["c"][0] if "c" in self.params else "ALL")
         u = self.__buildUserData(self.params["screenName"][0] if "screenName" in self.params else None)
-        self.wfile.write(simplejson.dumps({"data": d, "user": u}))
+        dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime.datetime) else None
+        self.wfile.write(simplejson.dumps({"data": d, "user": u}, default=dthandler))
 
     def POST_SettingsJson(self):
         self.send_response(200, "OK")
@@ -391,7 +300,7 @@ class UserDataCrawler(StoppableThread):
 
 class EmbeddedHttpServer(StoppableThread, SocketServer.TCPServer):
 
-    def __init__(self, urlsList, userMgr):
+    def __init__(self, model, userMgr):
         StoppableThread.__init__(self)
         self.__sessions = {}
         self.__userMgr = userMgr
@@ -399,15 +308,15 @@ class EmbeddedHttpServer(StoppableThread, SocketServer.TCPServer):
         self.__sessionLock = Semaphore()
         self.__PORT = 8888
         SocketServer.TCPServer.__init__(self, ("", self.__PORT), PynewsHandler)
-        self.__urls = urlsList
+        self.__model = model
         dir = os.path.expanduser("~/.pynews")
         if not os.path.exists(dir):
             os.mkdir(dir)
         file = os.path.join(dir, "settings.web.db")
         self.__settingsStore = shelve.open(file, protocol=-1)
 
-    def urls(self):
-        return self.__urls
+    def urls(self, cat=None):
+        return self.__model.finalUrls(cat)
 
     def getHref(self):
         return "http://localhost:" + str(self.__PORT)

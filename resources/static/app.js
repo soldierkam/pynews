@@ -87,7 +87,7 @@ $jit.TM.Squarified.implement({
                 },
                 onRightClick: function(n, o, e) {
                     var node = o.getNode();
-                    log(node.data.tweets);
+                    log(node.data);
                 }
             },
 
@@ -265,7 +265,7 @@ $jit.TM.Squarified.implement({
             }else{
                 r = 0.1
             }
-            mark += r * 100 * tweet.user.followers_count
+            mark += r * 100 * tweet.user.followers
         })
         return mark;
     };
@@ -352,10 +352,11 @@ $jit.TM.Squarified.implement({
             data:{
                 "$area": getArea(urlData),
                 "$color": findColor(urlData.cat),
-                "href": urlData.href,
+                "href": urlData.url,
                 lead: createLead(urlData),
-                leaf: urlData.href !== null,
+                leaf: true,
                 c: urlData.cat,
+                l: urlData.len,
                 "tweets": urlData.tweets
             },
             id: "id-" + state.i,
@@ -375,6 +376,7 @@ $jit.TM.Squarified.implement({
                 lead: name,
                 leaf: false,
                 c: cat,
+                l: undefined,
                 "tweets": undefined
             },
             id: "id-" + state.i,
@@ -415,7 +417,7 @@ $jit.TM.Squarified.implement({
             root = buildNode(validCategories[getValidCat()]);
         }
         calcArea(root, user);
-        dropSmallArea(root);
+        dropSmallArea(root, root);
         return root;
     }
 
@@ -434,11 +436,11 @@ $jit.TM.Squarified.implement({
         node.data["$area"] += sumChildren(node.children, user);
     }
 
-    function dropSmallArea(node){
+    function dropSmallArea(root, node){
         var toDelete = []
         var area = 0;
         $(node.children).each(function(i, child){
-            var parentArea = node.data["$area"];
+            var parentArea = root.data["$area"];
             var thisArea = child.data["$area"];
             var ratio = thisArea / parentArea;
             if( ratio < 0.0005){
@@ -446,7 +448,7 @@ $jit.TM.Squarified.implement({
                 log(child.data.tweets)
                 toDelete = toDelete.concat(child)
             }else{
-                dropSmallArea(child)
+                dropSmallArea(root, child)
             }
         });
         $(toDelete).each(function(i, itemtoRemove){

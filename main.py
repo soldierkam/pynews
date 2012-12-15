@@ -5,10 +5,11 @@ from classifier import TxtClassificatorWrapper
 from lang import TwitterLangDetect
 from gui import Gui
 from threading import Event
-from Queue import Queue, Empty, Full
+from Queue import Queue, Empty, Full, PriorityQueue
 from save import Manager as StreamMgr
 from wx.lib.pubsub.pub import Publisher
 from logger import logger
+from sql import SqlModel
 from tools import StoppableThread, NothingToDo
 from tweet import TweetText
 from url import UrlResolverManager, UrlBuilder, UrlException
@@ -16,23 +17,41 @@ import os,cPickle
 from user import UserBuilder
 from user_tools import UserMgr
 from web_server import EmbeddedHttpServer
+from threading import Semaphore
 
 tld = TwitterLangDetect()
+
+class GetMsg(object):
+
+    def __init__(self, cat):
+        self.__mutex = Semaphore(0)
+        self.__cat = cat
+
+    def cat(self):
+        return self.__cat
+
+    def setResponse(self, res):
+        self.__response = res
+        self.__mutex.release()
+
+    def getResponse(self):
+        self.__mutex.acquire()
+        return self.__response
 
 class ResolvedTweetQueue(StoppableThread):
 
     def __init__(self, streamDir, userDir, userBuilder, urlBuilder):
         StoppableThread.__init__(self, self.__class__.__name__)
-        self.__queue = Queue()
+        self.__queue = PriorityQueue(maxsize=50)
         self.__urlBuilder = urlBuilder
         self.__userBuilder = userBuilder
-        self.__urls = []
         self.__dir = os.path.join(streamDir, "tweets")
+        self.__model = SqlModel(os.path.join(streamDir, "finalUrl.db"))
         self.__userMgr = UserMgr(userDir)
-        self.__server = EmbeddedHttpServer(self.__urls, self.__userMgr)
+        self.__server = EmbeddedHttpServer(self, self.__userMgr)
 
     def tweetResolved(self, tweet):
-        self.__queue.put(tweet)
+        self.__queue.put((10, tweet))
 
     def atBegin(self):
         self.__server.start()
@@ -42,56 +61,51 @@ class ResolvedTweetQueue(StoppableThread):
 
     def runPart(self):
         try:
-            tweet = self.__queue.get(block=True, timeout=3)
-            for url in tweet.urls():
-                if url in self.__urls:
-                    continue
-                if url.isError():
-                    logger.info(u"Tweet bad: wrong url: " + unicode(tweet) + u" " + unicode(url))
-                    self.__urlBuilder.delete(url)
-                    break
-                url.setDocumentClasses(TxtClassificatorWrapper.instance().classify(url.getText()))
-                if url.isRoot() or url.lang() != "en" or "short" in url.documentClasses():
-                    logger.info(u"Tweet bad: " + unicode(tweet) + u" " + unicode(url))
-                    self.__urlBuilder.delete(url)
-                    break
-                logger.info(u"Tweet good: " + unicode(tweet) + u" " + unicode(url))
-                logger.info(u"URL: " + unicode(url))
-                self.__urls.append(url)
-                if len(self.__urls) % 100 == 99:
-                    self.__store()
+            obj = self.__queue.get(block=True, timeout=3)[1]
+            if isinstance(obj, GetMsg):
+                self.__parseGet(obj)
+            else:
+                self.__parseTweet(obj)
+
         except Empty:
             pass
         return
+
+    def __parseGet(self, getMsg):
+        urls = self.__model.selectUrls(getMsg.cat())
+        urls = [u.copy() for u in urls]
+        getMsg.setResponse(urls)
+
+    def __parseTweet(self, tweet):
+        for url in tweet.urls():
+            if url.isError():
+                logger.info(u"Tweet bad: wrong url: " + unicode(tweet) + u" " + unicode(url))
+                self.__urlBuilder.delete(url)
+                break
+            url.setDocumentClasses(TxtClassificatorWrapper.instance().classify(url.getText()))
+            if url.isRoot() or url.lang() != "en" or "short" in url.documentClasses():
+                logger.info(u"Tweet bad: " + unicode(tweet) + u" " + unicode(url))
+                self.__urlBuilder.delete(url)
+                break
+            logger.info(u"Tweet good: " + unicode(tweet) + u" " + unicode(url))
+            logger.info(u"URL: " + unicode(url))
+            self.__model.updateUrl(url)
 
     def atEnd(self):
         StoppableThread.atEnd(self)
         self.__server.stop()
         self.__userMgr.close()
-        self.__store()
 
-    def finalTweets(self):
-        tweets = set()
-        for url in self.__urls:
-            for tweet in url.tweets():
-                tweets.add(tweet)
-        return tweets
-
-    def finalUrls(self):
-        return self.__urls
+    def finalUrls(self, cat=None):
+        req = GetMsg(cat)
+        self.__queue.put((1, req))
+        return req.getResponse()
 
     def __tweetWithUrlToRoot(self, tweet):
         for u in tweet.urls():
             if u.isRoot():
                 return True
         return False
-
-    def __store(self):
-        file = os.path.join(self.__dir, "resolved_tweets.cpickle")
-        os.remove(file)
-        outputFile = open(file, "w")
-        cPickle.dump(self.finalTweets(), outputFile)
-        outputFile.close()
 
 class Model(StoppableThread):
 
@@ -214,13 +228,15 @@ def main():
     mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews"
     tweetsDir = os.path.join(mainDir, "stream", "tweets")
     logger.info("Start app")
+    model = None
     try:
         gui = Gui()
         mgr = StreamMgr(tweetsDir)
         model = Model(gui, stream=mgr.restore(lastOnly=True), mainDir=mainDir)
     except BaseException:
         logger.exception("Cannot start app")
-        model.stop()
+        if model:
+            model.stop()
         sys.exit(1)
         return
     gui.run()

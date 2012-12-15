@@ -28,11 +28,15 @@ class GetMsg(object):
 
     def __init__(self, url):
         self.__url = url.getExpandedUrl()
-        self.__digest = url.getUrlDigest()
+        self.__digest = url.getUrlExpDigest()
+        self.__digestOld = url.getUrlDigest()
         self.__mutex = Semaphore(0)
 
     def digest(self):
         return self.__digest
+
+    def digestOld(self):
+        return self.__digestOld
 
     def setResponse(self, res):
         self.__response = res
@@ -62,7 +66,7 @@ class UrlResolverCache(StoppableThread):
         self.__msgCount = 0
 
     def atBegin(self):
-        self.__shelve = sqlite.open(self.__filename, protocol=-1)
+        self.__shelve = sqlite.open(self.__filename, protocol=-1, flags="w")
         self.__onLoadSize = len(self.__shelve)
         self.__size = self.__onLoadSize
         logger.info("Load shelve from " + self.__filename + ": urls=" + unicode(self.__onLoadSize))
@@ -87,21 +91,33 @@ class UrlResolverCache(StoppableThread):
             if type(msg) is PutMsg:
                 resolvedUrl = msg.getUrl()
                 logger.debug(u"Put extracted url text in shelve: " + unicode(resolvedUrl))
-                self.__shelve[resolvedUrl.getUrlDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(),
+                self.__shelve[resolvedUrl.getUrlExpDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(),
                                                              "htm": None if resolvedUrl.isError() else resolvedUrl.getHtml(),
-                                                             "url": resolvedUrl.getUrl(),
+                                                             "url": resolvedUrl.getExpandedUrl(),
                                                              "error": resolvedUrl.isError()}
                 self.__size += 1
             elif type(msg) is GetMsg:
                 cv = None
-                if self.__shelve.has_key(msg.digest()):
-                    cv = self.__shelve.get(msg.digest())
+                has = self.__shelve.has_key(msg.digest())
+                hasOld = self.__shelve.has_key(msg.digestOld())
+                if has or hasOld:
+                    cv = self.__shelve.get(msg.digest()) if has else self.__shelve.get(msg.digestOld())
                     if "htm" not in cv:
                         logger.info(u"Cached value do not contains data: " + unicode(cv))
                         del self.__shelve[msg.digest()]
                         cv = None
                     else:
+                        if has and msg.getUrl() != cv["url"]:
+                            logger.info(u"Fix url")
+                            cv["url"] = msg.getUrl()
+                            self.__shelve[msg.digest()] = cv
                         self.__hits += 1
+                        if hasOld:
+                            logger.info(u"Change key")
+                            cv["url"] = msg.getUrl()
+                            self.__shelve[msg.digest()] = cv
+                            del self.__shelve[msg.digestOld()]
+
                 else:
                     logger.info(u"Cannot find url in cache: " + unicode(msg.getUrl()))
                 msg.setResponse(cv)
@@ -196,6 +212,19 @@ class UrlResolverWorker(StoppableThread):
         try:
             logger.debug("Fetch url... (qsize=" + str(self.__queue.qsize()) + ")")
             url = self.__queue.get(True, 3)
+            cachedValue = self.__cache.get(url)
+            if cachedValue:
+                if url.getExpandedUrl() != cachedValue["url"]:
+                    raise Exception("Different url " + url.getExpandedUrl() + " != " +  cachedValue["url"])
+                elif "error" in cachedValue and cachedValue["error"]:
+                    url.setError()
+                    self.__mgr.afterResolveUrl(url)
+                    return
+                else:
+                    url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
+                    self.__mgr.afterResolveUrl(url)
+                    return
+
             resolver = UrlStoppableResolver(url, self.__mgr, self.__cache, self)
             putInQueue = resolver.resolve()
             if putInQueue:
@@ -262,18 +291,6 @@ class UrlResolverManager():
             logger.info(u"Url already in queue:" + unicode(url))
             return
         url.setState("pending")
-        cachedValue = self.__resolverCache.get(url)
-        if cachedValue:
-            if url.getUrl() != cachedValue["url"]:
-                raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
-            elif "error" in cachedValue and cachedValue["error"]:
-                url.setError()
-                self.afterResolveUrl(url)
-                return
-            else:
-                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
-                self.afterResolveUrl(url)
-                return
         self.__queue.put(url, timeout=3)
         s = self.__queue.qsize()
         if s % 10 == 0 and s > 10 and self.__lastReportedQueueSize != s:
@@ -289,9 +306,9 @@ class UrlResolverManager():
         self.__notifyUrlResolved(url)
 
     def __notifyUrlResolved(self, url):
-        for tweet in url.tweets():
-            if tweet.isResolved():
-                self.__tweetResolverListener.tweetResolved(tweet)
+        tweet = url.tweet()
+        if tweet.isResolved():
+            self.__tweetResolverListener.tweetResolved(tweet)
 
 class UrlSyncResolverManager():
 
@@ -335,14 +352,13 @@ class UrlBuilder():
 
     def __init__(self):
         self.__mutex = threading.Semaphore()
-        self.__urls = {}
         self.__deleted = set()
 
     def delete(self, url):
         try:
             logger.info(u"Delete url " + unicode(url))
             self.__mutex.acquire()
-            self.__deleted.add(url.getUrlDigest())
+            self.__deleted.add(url.getUrlExpDigest())
             logger.info(u"Delete url: done!")
         finally:
             self.__mutex.release()
@@ -357,12 +373,7 @@ class UrlBuilder():
             if key in self.__deleted:
                 raise UrlException(urlEntity, "Deleted")
 
-            if self.__urls.has_key(key):
-                u = self.__urls.get(key)
-                u.linkWithTweet(tweet)
-            else:
-                self.__urls[key] = u
-                u.linkWithTweet(tweet)
+            u.linkWithTweet(tweet)
             if not isinstance(u, Url):
                 raise ValueError(u"Wrong object type " + unicode(u))
             return u
@@ -384,10 +395,10 @@ class Url:
         self.__dnsError = False
         self.__newsCategory = []
         self.__lang = None
-        self.__tweets = []
+        self.__tweet = None
 
     def linkWithTweet(self, tweet):
-        self.__tweets.append(tweet)
+        self.__tweet = tweet
         tweet.addUrl(self)
 
     def getState(self):
@@ -398,15 +409,14 @@ class Url:
             raise ValueError(state)
         self.__state = state
 
-    def tweets(self):
-        return self.__tweets
+    def tweet(self):
+        return self.__tweet
 
     def retweetsCount(self):
-        valuesInTime = [tweet.retweets() for tweet in self.tweets()]
-        return max(valuesInTime) if len(valuesInTime) > 0 else 0
+        return self.tweet().retweets()
 
     def mark(self):
-        friendsSum = sum([tweet.user().friendsCount() for tweet in self.tweets()])
+        friendsSum = self.tweet().user().friendsCount()
         return self.retweetsCount() + friendsSum
 
     def __validateUrl(self, url, entity):
@@ -432,7 +442,7 @@ class Url:
 
     def __eq__(self, other):
         if other and isinstance(other, Url):
-            return self.__url == other.__url
+            return self.__expanded == other.__expanded
         else:
             return False
 
@@ -500,6 +510,9 @@ class Url:
 
     def getUrlDigest(self):
         return stringToDigest(self.getUrl())
+
+    def getUrlExpDigest(self):
+        return stringToDigest(self.getExpandedUrl())
 
     def getUrl(self):
         return self.__url

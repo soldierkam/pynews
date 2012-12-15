@@ -20,14 +20,13 @@ class UrlsGrid(Grid):
         self.__onlyFinalUrls = False
         self.__sortColumnId = 1
         self.__sortDirectionDesc = True
-        self.CreateGrid(0, 7)
+        self.CreateGrid(0, 6)
         self.SetColLabelValue(0, "URL")
         self.SetColLabelValue(1, "Tweets count")
         self.SetColLabelValue(2, "Expanded")
         self.SetColLabelValue(3, "Lang")
         self.SetColLabelValue(4, "Class")
-        self.SetColLabelValue(5, "Mark")
-        self.SetColLabelValue(6, "Title")
+        self.SetColLabelValue(5, "Title")
         self.DisableCellEditControl()
         self.Bind(grid.EVT_GRID_CELL_LEFT_DCLICK, self._OnLinkClicked)
         self.Bind(grid.EVT_GRID_LABEL_LEFT_CLICK, self._OnLabelLeftClicked)
@@ -41,23 +40,21 @@ class UrlsGrid(Grid):
         self._sort()
         self._prepareGrid()
         for url in self.__urls:
-            self._setRow(i, url, len(url.tweets()))
+            self._setRow(i, url, len(url["tweets"]))
             i += 1
 
     def _urlSortFunction(self, url):
-        freq = len(url.tweets())
+        freq = len(url["tweets"])
         if self.__sortColumnId == 0:
-            return url.getUrl()
+            return url["tco"]
         elif self.__sortColumnId == 1:
             return freq
         elif self.__sortColumnId == 2:
-            return url.getExpandedUrl()
+            return url["url"]
         elif self.__sortColumnId == 3:
-            return url.lang()
+            return url["lang"]
         elif self.__sortColumnId == 4:
-            return url.documentClasses()[0] if len(url.documentClasses()) > 0 else ""
-        elif self.__sortColumnId == 5:
-            return url.mark()
+            return url["cat"]
         raise ValueError("Wrong value: " + str(self.__sortColumnId))
 
     def _sort(self):
@@ -72,18 +69,17 @@ class UrlsGrid(Grid):
 
     def _setRow(self, i, url, count):
         self.SetRowLabelValue(i, unicode(i+1))
-        self.SetCellValue(i, 0, url.getUrl())
+        self.SetCellValue(i, 0, url["tco"])
         self.SetCellValue(i, 1, unicode(count))
-        self.SetCellValue(i, 2, url.getExpandedUrl())
+        self.SetCellValue(i, 2, url["url"])
 
-        self.SetCellValue(i, 3, str(url.lang()))
-        self.SetCellBackgroundColour(i, 3, self.__colourForLang(url.lang()))
+        self.SetCellValue(i, 3, str(url["lang"]))
+        self.SetCellBackgroundColour(i, 3, self.__colourForLang(url["lang"]))
 
-        self.SetCellValue(i, 4, ', '.join(map(str, url.documentClasses())))
-        self.SetCellBackgroundColour(i, 4, self.__colourForClass(url.documentClasses()))
+        self.SetCellValue(i, 4, url["cat"] + "," + url["len"] )
+        self.SetCellBackgroundColour(i, 4, self.__colourForClass(url["len"]))
 
-        self.SetCellValue(i, 5, unicode(url.mark()))
-        self.SetCellValue(i, 6, unicode(url.getTitle()))
+        self.SetCellValue(i, 5, unicode(url["title"]))
 
 
     def setOnlyFinalUrls(self, value):
@@ -94,12 +90,12 @@ class UrlsGrid(Grid):
         c = event.GetCol()
         url = self.__urls[r][0]
         if c == 5:
-            logger.info(simplejson.dumps(url.dump(), indent="\t"))
+            logger.info(simplejson.dumps(url, indent="\t"))
         elif c == 4:
             Publisher.sendMessage("model.prob_dist", data = url)
         elif c == 3:
             import webbrowser
-            webbrowser.open(url.getExpandedUrl())
+            webbrowser.open(url["url"])
 
     def _OnLabelLeftClicked(self, evt):
         col = evt.GetCol()
@@ -110,12 +106,10 @@ class UrlsGrid(Grid):
                 self.__sortColumnId = col
             self._doUpdate()
 
-    def __colourForClass(self, classList):
-        if len(classList) == 0:
-            return "#FFFFFF"
-        if "short" in classList:
+    def __colourForClass(self, len):
+        if "short" == len:
             return "#A0A0A0"
-        if "medium" in classList:
+        if "medium" == len:
             return "#CCCC66"
         return "#66CC33"
 

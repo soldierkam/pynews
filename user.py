@@ -23,6 +23,12 @@ class User:
     def friendsCount(self):
         return self.__followersCount
 
+    def lang(self):
+        return self.__lang
+
+    def name(self):
+        return self.__name
+
     def __str__(self):
         return u"{User:" + unicode(self.__id) + u",lang:" + unicode(self.__lang) + u",followers:" + unicode(self.__followersCount) + u")"
 

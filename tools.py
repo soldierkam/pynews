@@ -151,7 +151,7 @@ def longSubstrPair(data):
     return results[0] if len(results) > 0 else ""
 
 def fetchTitle(html, titles = []):
-    bs = BeautifulSoup(html)
+    bs = BeautifulSoup(html, convertEntities=BeautifulSoup.HTML_ENTITIES)
     metaTitle = bs.find("title")
     defaultTitle = ""
     if metaTitle:
@@ -172,7 +172,7 @@ def fetchTitle(html, titles = []):
     #szukamy nagłówka który zawiera tytuł
     titleTmp = title
     for h in heads:
-        if title in h and len(longSubstr([title, h])) > len(titleTmp) :
+        if title in h and len(longSubstr([title, h])) >= len(titleTmp) :
             titleTmp = h
     title = titleTmp
     #obcinamy zbędne spacje
@@ -200,4 +200,5 @@ if __name__ == "__main__":
     #logger.info(fetchTitleByUrl("http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/"))
     #logger.info(fetchTitleByUrl("http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea"))
     #logger.info(fetchTitleByUrl("http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html"))
-    logger.info(fetchTitleByUrl("http://www.france24.com/en/20121012-mars-rover-makes-surprising-rock-find?utm_source=dlvr.it&utm_medium=twitter"))
+    #logger.info(fetchTitleByUrl("http://www.france24.com/en/20121012-mars-rover-makes-surprising-rock-find?utm_source=dlvr.it&utm_medium=twitter"))
+    logger.info(fetchTitleByUrl("http://globalgrind.com/news/russell-simmons-womens-rights-romney-obama-vote"))

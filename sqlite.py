@@ -33,8 +33,10 @@ class Iterator():
 
 class SqliteShelve():
 
-    def __init__(self, filename, flags="c"):
+    def __init__(self, filename, flags="c", maxCacheSize=200, minCacheSize=100):
         self.__readonly = "r" in flags
+        self.__maxCacheSize = maxCacheSize
+        self.__minCacheSize = minCacheSize
         tmp, ext = os.path.splitext(filename)
         self.__sqliteFilename = filename
         if ext == ".db":
@@ -136,15 +138,15 @@ class SqliteShelve():
 
     def __putInCache(self, key, value):
         self.__cache[key] = (0, value)
-        if len(self.__cache) > 1500:
-            while len(self.__cache) > 1000:
-                toRemove = None
-                c = None
-                for k, v in self.__cache.iteritems():
-                    if c is None or v[0] < c:
-                        toRemove = k
-                        c = v[0]
-                del self.__cache[toRemove]
+        if len(self.__cache) > self.__maxCacheSize:
+            toRemove = []
+            for k, v in self.__cache.iteritems():
+                toRemove.append((k, v[0]))
+            size = len(self.__cache) - self.__minCacheSize
+            toRemove = sorted(toRemove, key=lambda x: x[1])[:size]
+            logger.info("Remove %d elements from cache" % size)
+            for k, c in toRemove:
+                del self.__cache[k]
 
     def __delFromCache(self, key):
         del self.__cache[key]
@@ -211,6 +213,8 @@ def _simpleTest():
     s = open("/tmp/test.db2", flags="w")
     for i in range(1, 2000):
         s[str(i)] = {"tt": i, "dd": i + 1}
+        if i < 100:
+            temp = s[str(i)]
     s.close()
 
     s = open("/tmp/test.db2", flags="w")
