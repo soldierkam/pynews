@@ -46,7 +46,7 @@ class ResolvedTweetQueue(StoppableThread):
         self.__urlBuilder = urlBuilder
         self.__userBuilder = userBuilder
         self.__dir = os.path.join(streamDir, "tweets")
-        self.__model = SqlModel(os.path.join(streamDir, "finalUrl.db"))
+        self.__model = SqlModel(os.path.join(streamDir, "finalUrl.db"), drop=False)
         self.__userMgr = UserMgr(userDir)
         self.__server = EmbeddedHttpServer(self, self.__userMgr)
 

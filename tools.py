@@ -150,31 +150,31 @@ def longSubstrPair(data):
     #logger.info(u"Results: " + u'\n-'.join(results))
     return results[0] if len(results) > 0 else ""
 
-def fetchTitle(html, titles = []):
+def __fixChars(text):
+    return text.replace(unichr(160), " ")
+
+def fetchTitle(html, titles = None):
+    if titles is None:
+        titles = []
     bs = BeautifulSoup(html, convertEntities=BeautifulSoup.HTML_ENTITIES)
     metaTitle = bs.find("title")
     defaultTitle = ""
     if metaTitle:
-        tagContent = u''.join(metaTitle.findAll(text=True))
+        tagContent = __fixChars(u''.join(metaTitle.findAll(text=True)))
         defaultTitle = tagContent.strip()
         titles.append((defaultTitle, "meta"))
     heads = []
     for i in [1, 2, 3, 4, 5]:
         tagsH =bs.findAll("h" + str(i))
         for tagH in tagsH:
-            tagContent = u''.join(tagH.findAll(text=True))
+            tagContent = __fixChars(u''.join(tagH.findAll(text=True)))
             titles.append((tagContent.strip(), "h"))
             heads.append(tagContent.strip())
     longestSubstring = longSubstrPair(titles).strip().replace("\n", " ").replace("\t", " ")
     #logger.info(u"Title: " + unicode(title))
     longestSubstring = longestSubstring or defaultTitle
     title = longestSubstring
-    #szukamy nagłówka który zawiera tytuł
-    titleTmp = title
-    for h in heads:
-        if title in h and len(longSubstr([title, h])) >= len(titleTmp) :
-            titleTmp = h
-    title = titleTmp
+    title = __findHeader(heads, title)
     #obcinamy zbędne spacje
     while True:
         titleTmp = title.replace("  ", " ")
@@ -183,7 +183,19 @@ def fetchTitle(html, titles = []):
         title = titleTmp
     return title
 
-def fetchTitleByUrl(url, titles=[]):
+def __findHeader(heads, title):
+    #szukamy nagłówka który zawiera tytuł
+    results = {}
+    for h in heads:
+        l = len(longSubstr([title, h]))
+        t = len(title)
+        if h in title and l <= t :
+            results[h] = l
+    if results:
+        return sorted(results, key=lambda x: x[1], reverse=True)[0]
+    return title
+
+def fetchTitleByUrl(url, titles=None):
     extractor = Extractor(extractor='ArticleExtractor', url=url)
     html =  extractor.data
     return fetchTitle(html, titles)
@@ -197,8 +209,10 @@ if __name__ == "__main__":
     #print longSubstrPair(data)
     #data = [u"Threats and silence: the intimidation by Rangers fans | Alex Thomson's View", u"Threats and silence: the intimidation by Rangers fans", u"Alex Thomson's View", u"There are 151 comments on this post", u"Have your say", u"TOMOBLOG RANGERS INTIMIDATION"]
     #print longSubstrPair(data)
-    #logger.info(fetchTitleByUrl("http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/"))
-    #logger.info(fetchTitleByUrl("http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea"))
-    #logger.info(fetchTitleByUrl("http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html"))
-    #logger.info(fetchTitleByUrl("http://www.france24.com/en/20121012-mars-rover-makes-surprising-rock-find?utm_source=dlvr.it&utm_medium=twitter"))
+    logger.info(fetchTitleByUrl("http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/"))
+    logger.info(fetchTitleByUrl("http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea"))
+    logger.info(fetchTitleByUrl("http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html"))
+    logger.info(fetchTitleByUrl("http://www.france24.com/en/20121012-mars-rover-makes-surprising-rock-find?utm_source=dlvr.it&utm_medium=twitter"))
     logger.info(fetchTitleByUrl("http://globalgrind.com/news/russell-simmons-womens-rights-romney-obama-vote"))
+    logger.info(fetchTitleByUrl("http://www.lancashiretelegraph.co.uk/sport/football/blackburn_rovers/news/9981760.Ewood_fears_as_manager_search_goes_on/?ref=twt"))
+    logger.info(fetchTitleByUrl("http://buildmemuscle.wordpress.com/2012/10/11/great-leg-workout/"))

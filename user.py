@@ -8,6 +8,8 @@ class User:
         self.__id = user["id"]
         self.__lang = user["lang"]
         self.__name = user["screen_name"]
+        self.__createdAt = user["created_at"]
+        self.__statusesCount = user["statuses_count"]
 
     def id(self):
         return self.__id
@@ -23,14 +25,20 @@ class User:
     def friendsCount(self):
         return self.__followersCount
 
+    def statusesCount(self):
+        return self.__statusesCount
+
     def lang(self):
         return self.__lang
 
     def name(self):
         return self.__name
 
-    def __str__(self):
-        return u"{User:" + unicode(self.__id) + u",lang:" + unicode(self.__lang) + u",followers:" + unicode(self.__followersCount) + u")"
+    def createdAt(self):
+        return self.__createdAt
+
+    def __repr__(self):
+        return u"{User:%s,lang:%s,followers:%s,created_at:%s,statuses_count:%s}" % (unicode(self.__id), unicode(self.__lang), unicode(self.__followersCount), unicode(self.__createdAt), unicode(self.__statusesCount))
 
     def __eq__(self, other):
         if other is not User:

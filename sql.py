@@ -16,6 +16,8 @@ class UserE(Base):
     name = Column(String(100), nullable=False)
     lang = Column(String(2))
     followersCount = Column(Integer, nullable=False)
+    statusesCount = Column(Integer, nullable=False)
+    createdAt = Column(Integer, nullable=False)
     tweets = relationship("TweetE", backref="user")
 
     def copy(self):
@@ -23,6 +25,8 @@ class UserE(Base):
         v["id"] = self.id
         v["name"] = self.name
         v["followers"] = self.followersCount
+        v["statuses"] = self.statusesCount
+        v["createdAt"] = self.createdAt
         return v
 
     def __repr__(self):
@@ -114,6 +118,7 @@ class SqlModel():
             return False
 
     def updateUrl(self, url):
+        tweetE = None
         try:
             logger.debug(u"Put " + unicode(url))
             self.__session.begin()
@@ -151,7 +156,7 @@ class SqlModel():
         userE = self._selectOrCreateUser(t.user())
         tw = TweetE()
         tw.id = t.id()
-        tw.createdAt = pytz.UTC.normalize(parse(t.createdAt())).replace(tzinfo=None)#datetime.strptime(t.createdAt(), '%a %b %d %H:%M:%S %z %Y')#Fri Oct 12 08:18:38 +0000 2012'
+        tw.createdAt = self.__parseDate(t.createdAt())
         tw.retweets = t.retweets()
         tw.text = t.text()
         userE.tweets.append(tw)
@@ -164,7 +169,8 @@ class SqlModel():
         user.followersCount = u.friendsCount()
         user.lang = u.lang()
         user.name = u.name()
-        #self.__session.merge(user)
+        user.createdAt = self.__parseDate(u.createdAt())
+        user.statusesCount = u.statusesCount()
         return user
 
     def selectUrls(self, cat=None):
@@ -172,6 +178,9 @@ class SqlModel():
         if cat:
             query = query.filter(UrlE.cat == cat)
         return query.all()
+
+    def __parseDate(self, d):
+        return pytz.UTC.normalize(parse(d)).replace(tzinfo=None)#datetime.strptime(t.createdAt(), '%a %b %d %H:%M:%S %z %Y')#Fri Oct 12 08:18:38 +0000 2012'
 
     def session(self):
         return self.__session

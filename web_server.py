@@ -145,7 +145,7 @@ class PynewsHandler(BaseHTTPRequestHandler):
         if who:
             autorefresh = self.params["autorefresh"][0] if "autorefresh" in self.params else None
             screenName = self.params["screenName"][0] if "screenName" in self.params else None
-            autorefresh = True if autorefresh else False
+            autorefresh = True if autorefresh == "true" else False
             if autorefresh and screenName:
                 self.server.saveSettings(who, {"autorefresh": autorefresh, "screenName": screenName})
             else:

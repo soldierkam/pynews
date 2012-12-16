@@ -169,6 +169,18 @@ $jit.TM.Squarified.implement({
         state.tm = undefined;
     }
 
+    function suspendAutorefreshTimer(){
+        if(state.autoRefreshTimer){
+            clearInterval(state.autoRefreshTimer);
+        }
+    }
+
+    function resumeAutorefreshTimer(){
+        if(state.autorefresh) {
+            state.autoRefreshTimer = setInterval(triggerHashChange, 1000 * 30);
+        }
+    }
+
     function showLoader(){
         log("Show loader")
         //$('#infovis').css('display', 'none');
@@ -254,6 +266,12 @@ $jit.TM.Squarified.implement({
         return t;
     };
 
+    function getHoursSinceCreation(obj){
+        var createAt = Date.parse(obj.createdAt),
+            delta = new Date() - createAt;
+        return Math.round(delta / 1000 / 60)
+    }
+
     function getArea(node){
         //return node.mark
         var tweets = node.tweets;
@@ -265,7 +283,7 @@ $jit.TM.Squarified.implement({
             }else{
                 r = 0.1
             }
-            mark += r * 100 * tweet.user.followers
+            mark += r * 100 * tweet.user.followers * tweet.user.period;
         })
         return mark;
     };
@@ -344,9 +362,17 @@ $jit.TM.Squarified.implement({
         return mFactor(uc, c);
     };
 
+    function prepareTweets(tweets){
+        $(tweets).each(function(i, tweet){
+            var user = tweet.user;
+            user.period = getHoursSinceCreation(tweet) / user.statuses;
+        });
+        return tweets;
+    }
 
     function buildUrlNode(urlData){
         state.i += 1;
+        prepareTweets(urlData.tweets);
         return {
             children: [],
             data:{
@@ -472,6 +498,7 @@ $jit.TM.Squarified.implement({
                 updateTooltip(json.user.proc, json.user.phase);
               }
               showTreeMap(treemapData);
+              resumeAutorefreshTimer();
           }
         });
     }
@@ -505,6 +532,7 @@ $jit.TM.Squarified.implement({
         $(window).resize(handleWindowResize);
 
         $(window).hashchange( function(){
+            suspendAutorefreshTimer();
             removeTm();
             showLoader();
             var cat = getValidCat();

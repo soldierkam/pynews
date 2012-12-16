@@ -81,12 +81,11 @@ PHASE={
 
 class UserFeatures():
 
-    def __init__(self, userStore, urlResolver, fd, userId, screenName, token, stoppable):
+    def __init__(self, userStore, urlResolver, userId, screenName, token, stoppable):
         self.__store = userStore;
         self.__id = userId
         self.__screenName = screenName
         self.__urlResolver = urlResolver
-        self.__fd = fd
         self.__token = token
         self.__phase = 0
         self.__proc = 0.0
@@ -114,7 +113,7 @@ class UserFeatures():
         self.__proc = 0
 
     def doJob(self):
-        self.__urlBuilder = UrlBuilder(self.__fd)
+        self.__urlBuilder = UrlBuilder()
         self.__userBuilder = UserBuilder()
 
         self.__changePhase(PHASE["GET_TIMELINE"])
@@ -206,10 +205,9 @@ class UserMgr():
         self.__userStore = UserStore(mainDir)
         self.__urlResolverMgr = UrlSyncResolverManager(os.path.join(mainDir, "urlResolverCache.db2"))
         self.__urlResolverMgr.start()
-        self.__fd = FreqDist()
 
     def doJob(self, token, userId, stoppable, screenName=None):
-        return UserFeatures(self.__userStore, self.__urlResolverMgr, self.__fd, userId, screenName, token, stoppable)
+        return UserFeatures(self.__userStore, self.__urlResolverMgr, userId, screenName, token, stoppable)
 
     def close(self):
         self.__urlResolverMgr.stop()

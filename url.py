@@ -336,8 +336,8 @@ class UrlSyncResolverManager():
     def addUrlToQueue(self, url):
         cachedValue = self.__resolverCache.get(url)
         if cachedValue:
-            if url.getUrl() != cachedValue["url"]:
-                raise Exception("Different url " + url.getUrl() + " != " +  cachedValue["url"])
+            if url.getExpandedUrl() != cachedValue["url"]:
+                raise Exception("Different url " + url.getExpandedUrl() + " != " +  cachedValue["url"])
             elif "error" in cachedValue and cachedValue["error"]:
                 url.setError()
                 return
