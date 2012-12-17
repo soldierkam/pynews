@@ -12,13 +12,14 @@ Base = declarative_base()
 class UserE(Base):
     __tablename__ = 'users'
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=False)
     name = Column(String(100), nullable=False)
     lang = Column(String(2))
     followersCount = Column(Integer, nullable=False)
     statusesCount = Column(Integer, nullable=False)
     createdAt = Column(Integer, nullable=False)
     tweets = relationship("TweetE", backref="user")
+    cats = relationship("UserCatEntry", backref="user")
 
     def copy(self):
         v = {}
@@ -27,6 +28,7 @@ class UserE(Base):
         v["followers"] = self.followersCount
         v["statuses"] = self.statusesCount
         v["createdAt"] = self.createdAt
+        v["cats"] = [catEntry.copy() for catEntry in self.cats]
         return v
 
     def __repr__(self):
@@ -37,6 +39,16 @@ class UserE(Base):
             return False
         return self.id == other.id
 
+class UserCatEntry(Base):
+    __tablename__ = 'user_cats'
+
+    user_id = Column(BigInteger, ForeignKey('users.id'))
+    cat = Column(String(10), nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+
+    def copy(self):
+        return {self.cat: self.count}
+
 association_table = Table('association', Base.metadata,
     Column('tweet_id', Integer, ForeignKey('tweets.id')),
     Column('url_digest', Integer, ForeignKey('urls.digest'))
@@ -45,7 +57,7 @@ association_table = Table('association', Base.metadata,
 class TweetE(Base):
     __tablename__ = "tweets"
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=False)
     retweets = Column(Integer, nullable=False)
     text = Column(String(300), nullable=False)
     createdAt = Column(DateTime(timezone=True), nullable=False)
@@ -70,7 +82,7 @@ class UrlE(Base):
 
     __tablename__ = "urls"
 
-    digest = Column(String(40), primary_key=True)
+    digest = Column(String(40), primary_key=True, autoincrement=False)
     tcoUrl = Column(String(30), nullable=False)
     url = Column(String(512), nullable=False)
     text = Column(Text(), nullable=False)
@@ -109,6 +121,7 @@ class SqlModel():
             Base.metadata.drop_all(db)
         Base.metadata.create_all(db)
         self.__session = create_session(bind=db)
+        self.__db = db
 
     def urlExists(self, urlObj):
         try:
@@ -134,6 +147,10 @@ class SqlModel():
             logger.info(tweetE)
             self.__session.rollback()
             raise BaseException("Error")
+
+    def selectUserWithoutCat(self, limit=10):
+        result = self.__db.execute("SELECT u.* FROM users u JOIN tweets t ON t.user_id = u.id LEFT JOIN user_cats uc ON uc.user_id = u.id WHERE uc.user_id is NULL order by t.retweets DESC limit %d", limit)
+        return self.__session.query(UserE).instances(result)
 
     def _selectOrCreateUrl(self, u):
         url = UrlE()

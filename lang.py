@@ -106,7 +106,7 @@ class LangDetect(object):
 
             sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
             #print sorted_scores
-            logger.info(u"%s: %s" % (text, unicode(sorted_scores)))
+            #logger.info(u"%s: %s" % (text, unicode(sorted_scores)))
             for lang, score in sorted_scores:
                 if score > 0.0001:
                     return lang

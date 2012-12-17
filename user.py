@@ -48,7 +48,6 @@ class User:
     def __hash__(self):
         return 3 + 7 * self.__id
 
-
 class UserBuilder:
 
     def __init__(self, cache = {}):

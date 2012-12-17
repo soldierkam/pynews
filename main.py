@@ -38,6 +38,40 @@ class GetMsg(object):
         self.__mutex.acquire()
         return self.__response
 
+class UserCrawler(StoppableThread):
+
+    def __init__(self, token, userMgr, callback, userId=None, screenName=None):
+        StoppableThread.__init__(self)
+        self.__userMgr = userMgr
+        self.__userId = userId
+        self.__screenName = screenName
+        self.__token = token
+        self.__callback = callback
+
+    def runPart(self):
+        userFeatures = self.__userMgr.doJob(self.__token, self.__userId, self, self.__screenName)
+        try:
+            userFeatures.doJob()
+            self.__callback(self, userFeatures)
+        except NothingToDo as e:
+            raise e
+        except BaseException as e:
+            logger.exception(u"UserFeatures.doJob error for " + unicode(self.__userId) + u" " + unicode(self.__screenName))
+            raise e
+        raise NothingToDo()
+
+class CrawlerResult():
+
+    def __init__(self, crawler, userFeatures):
+        self.__uf = userFeatures
+        self.__c = crawler
+
+    def results(self):
+        return self.__uf
+
+    def crawler(self):
+        return self.__c
+
 class ResolvedTweetQueue(StoppableThread):
 
     def __init__(self, streamDir, userDir, userBuilder, urlBuilder):
@@ -49,6 +83,7 @@ class ResolvedTweetQueue(StoppableThread):
         self.__model = SqlModel(os.path.join(streamDir, "finalUrl.db"), drop=False)
         self.__userMgr = UserMgr(userDir)
         self.__server = EmbeddedHttpServer(self, self.__userMgr)
+        self.__crawlers = []
 
     def tweetResolved(self, tweet):
         self.__queue.put((10, tweet))
@@ -64,6 +99,8 @@ class ResolvedTweetQueue(StoppableThread):
             obj = self.__queue.get(block=True, timeout=3)[1]
             if isinstance(obj, GetMsg):
                 self.__parseGet(obj)
+            elif isinstance(obj, CrawlerResult):
+                self.__afterCallback(obj.crawler(), obj.results())
             else:
                 self.__parseTweet(obj)
 
@@ -90,6 +127,24 @@ class ResolvedTweetQueue(StoppableThread):
             logger.info(u"Tweet good: " + unicode(tweet) + u" " + unicode(url))
             logger.info(u"URL: " + unicode(url))
             self.__model.updateUrl(url)
+
+    def __callback(self, crawler, userFeatures):
+        self.__queue.put(CrawlerResult(crawler, userFeatures))
+
+    def __createUserProfile(self):
+        users = self.__model.selectUserWithoutCat(1)
+        if not users:
+            return False
+        token = self.__server.getToken()
+        for u in users:
+            crawler = UserCrawler(token, self.__userMgr, self.__callback, userId=u.id)
+            self.__crawlers.append(crawler)
+        return True
+
+    def __afterCallback(self, crawler, userFeatures):
+        self.__crawlers.remove(crawler)
+        userFeatures.cats()
+        userFeatures.langs()
 
     def atEnd(self):
         StoppableThread.atEnd(self)

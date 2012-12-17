@@ -339,6 +339,9 @@ class EmbeddedHttpServer(StoppableThread, SocketServer.TCPServer):
                 return c['session'].value
         return None
 
+    def getToken(self):
+        return None#TODO
+
     def findSession(self):
         try:
             cookie = Cookie.SimpleCookie(os.environ["HTTP_COOKIE"])

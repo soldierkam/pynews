@@ -199,6 +199,12 @@ class UserFeatures():
         values["proc"] = self.__proc
         return values
 
+    def langs(self):
+        return self.__langFreq
+
+    def cats(self):
+        return self.__catFreq
+
 class UserMgr():
 
     def __init__(self, mainDir):

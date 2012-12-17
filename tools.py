@@ -192,7 +192,7 @@ def __findHeader(heads, title):
         if h in title and l <= t :
             results[h] = l
     if results:
-        return sorted(results, key=lambda x: x[1], reverse=True)[0]
+        return sorted(results.items(), key=lambda x: x[1], reverse=True)[0][0]
     return title
 
 def fetchTitleByUrl(url, titles=None):
