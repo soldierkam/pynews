@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from threading import Thread, Event
+import threading
 from boilerpipe.extract import Extractor
 from logger import logger
 import time
@@ -112,7 +113,7 @@ class StoppableThread(Thread):
         pass
 
     def atEnd(self):
-        logger.info("exiting...")
+        logger.info("exiting... (%d)" % threading.activeCount())
         pass
 
 def stringToDigest(string):

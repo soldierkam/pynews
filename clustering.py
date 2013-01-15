@@ -8,6 +8,7 @@ import re
 from nltk.corpus import stopwords
 from lang import LangDetect
 from logger import logger
+from random import choice
 
 def getWords(data):
     t = [item["text"] for key, item in data.items()]
@@ -37,16 +38,16 @@ def features(text):
 
 class DocumentSizeClustering():
 
-    def __init__(self, filename = "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/tweets/cache"):
+    def __init__(self, filename = "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db"):
         logger.info("Start building " + self.__class__.__name__)
         self.__mutex = threading.Semaphore()
         data = shelve.open(filename, protocol=-1, flag="r")
         langDetect = LangDetect.instance()
         vectors = [features(item["text"]) for digest, item in data.items() if item["text"] and item["text"] != "ERROR" and langDetect.detect(item["text"]) is "en"]
-        self.__clusterer = cluster.KMeansClusterer(3, euclidean_distance, initial_means=[[10,40,0,1],[30,500,0,30],[120,1500,15,50]])
+        self.__clusterer = cluster.KMeansClusterer(4, euclidean_distance, initial_means=[[10,40,0,1],[10,200,1,1],[30,500,2,30],[120,1500,15,50]])
         self.__clusterer.cluster(vectors)
-        klassIdToSize = {"0": 0, "1": 0, "2": 0}
-        klassIdToWordsCount = {"0": 0, "1": 0, "2": 0}
+        klassIdToSize = {"0": 0, "1": 0, "2": 0, "3": 0}
+        klassIdToWordsCount = {"0": 0, "1": 0, "2": 0, "3": 0}
         for item in data.itervalues():
             text = item["text"]
             if text and text != "ERROR":
@@ -56,12 +57,12 @@ class DocumentSizeClustering():
                 klassIdToWordsCount[klass] += len(text.split())
         data.close()
         results = []
-        for klassId in ["0", "1", "2"]:
+        for klassId in ["0", "1", "2", "3"]:
             meanWordsInKlass = klassIdToWordsCount[klassId] / klassIdToSize[klassId] if klassIdToSize[klassId] != 0 else 0
             results.append({"klass": klassId, "mean" : meanWordsInKlass})
         logger.info("Clustering results: " + str(results))
         sortedKlass = sorted(results, lambda x,y: x["mean"] < y["mean"])
-        self.__klassIdToLabel = {klassIdWithLabel[0]: klassIdWithLabel[1] for klassIdWithLabel in zip([item["klass"] for item in sortedKlass], ["short", "medium", "long"])}
+        self.__klassIdToLabel = {klassIdWithLabel[0]: klassIdWithLabel[1] for klassIdWithLabel in zip([item["klass"] for item in sortedKlass], ["short", "small", "medium", "long"])}
 
     def classify(self, document):
         try:
@@ -72,4 +73,33 @@ class DocumentSizeClustering():
             self.__mutex.release()
 
 if __name__ == "__main__":
-    DocumentSizeClustering()
+    c = DocumentSizeClustering()
+    langDetect = LangDetect.instance()
+    data = shelve.open("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db", protocol=-1, flag="r")
+    print "Documents: " + str(len(data))
+    position = 0
+    labels = {"short": 0, "medium": 0, "long": 0, "small": 0}
+    input = []
+    for digest, item in data.items():
+        if item["text"] and item["text"] != "ERROR" and langDetect.detect(item["text"]) is "en":
+            input.append(item)
+    #testItems = input
+    testItems = []
+    for i in range(0, 150):
+        e = choice(input)
+        input.remove(e)
+        testItems.append(e)
+
+    for item in testItems:
+        position += 1
+        ignore = False
+        for i in ["Load new Tweets", "Comment is free", "Embed this Photo", "Suggested Language"]:
+            ignore = ignore or item["text"].startswith(i)
+        label = c.classify(item["text"])
+        labels[label] += 1
+        if ignore and label is "short":
+            print str(position) + " Skip one"
+            continue
+        print str(position) + "\t" + item["url"]  + "\t"+ label +"\t" + item["text"][:200].replace("\n", " ").replace("\t", " ") + "... " + str(features(item["text"]))
+    print labels
+    data.close()

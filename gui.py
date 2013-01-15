@@ -134,10 +134,12 @@ class Gui(wx.Frame):
         self.Show()
         self.timer = wx.Timer(self)
         Publisher.subscribe(self.updateUrls, "update.urls")
+        Publisher.subscribe(self.updateStatusBar, "update.statusBar")
         Publisher.subscribe(self.onModelPaused, "model.paused")
         Publisher.subscribe(self.onModelStarted, "model.started")
         self.Bind(wx.EVT_TIMER, self.onTimerEvent, self.timer)
         self.__paused = True
+        self.timer.Start(1000 * 10)
 
     def __buildMenuAnalyze(self):
         menu = wx.Menu()
@@ -159,27 +161,30 @@ class Gui(wx.Frame):
     def updateUrls(self, msg):
         wx.CallAfter(self.doUpdate, msg.data)
 
+    def updateStatusBar(self, msg):
+        wx.CallAfter(self.doUpdateStatusBar, msg.data)
+
     def doUpdate(self, data):
+        self.grid.update(data["urls"])
+
+    def doUpdateStatusBar(self, data):
         cacheMsg = "Cache hit rate: " + str(data["cache"]) + "%"
         end = data["position_end"] if data["position_end"] else "UNKNOWN"
         tweetMsg = "Position: " + str(data["position"]) + "/" + str(end)
         fileMsg = "File: " + str(data["current_file_c"]) + "/" + str(data["last_file_c"])
         self.SetStatusText(cacheMsg + "\t" + tweetMsg + "\t" + fileMsg)
-        self.grid.update(data["urls"])
 
     def onTimerEvent(self, event):
-        #self.onRefreshMenuClick(event)
-        pass
+        logger.info("Request status for GUI")
+        Publisher.sendMessage("model.refreshStatusBar")
 
     def onModelPaused(self, msg):
         self.__paused = True
         self.menuStartPause.SetText("Start")
-        self.timer.Stop()
 
     def onModelStarted(self, msg):
         self.__paused = False
         self.menuStartPause.SetText("Pause")
-        self.timer.Start(1000 * 10)
 
     def onShowTreeMap(self, event):
         Publisher.sendMessage("model.showTreeMap")

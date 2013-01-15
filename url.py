@@ -156,6 +156,7 @@ class UrlResolver():
                 text = extractor.getText()
                 if text is None:
                     raise ValueError("Extracted text is None")
+                logger.debug(u"Set text " + unicode(self.__url))
                 self.__url.setTextAndHtml(text, extractor.data)
                 self.__cache.put(self.__url)
                 self.__mgr.afterResolveUrl(self.__url)
@@ -211,7 +212,7 @@ class UrlResolverWorker(StoppableThread):
     def runPart(self):
         try:
             logger.debug("Fetch url... (qsize=" + str(self.__queue.qsize()) + ")")
-            url = self.__queue.get(True, 3)
+            url = self.__queue.get(True, 1)
             cachedValue = self.__cache.get(url)
             if cachedValue:
                 if url.getExpandedUrl() != cachedValue["url"]:
@@ -241,7 +242,7 @@ class UrlResolverWorker(StoppableThread):
 
     def correctInternetConnection(self):
         try:
-            response=urllib2.urlopen('http://www.google.pl',timeout=5)
+            response=urllib2.urlopen('http://www.google.pl')
             return True
         except:
             return False
@@ -257,7 +258,7 @@ class UrlResolverManager():
         self.__workers = []
         self.__tweetResolverListener = tweetResolverListener
         self.__resolverCache = UrlResolverCache(cacheFilename)
-        for i in range(0,10):
+        for i in range(0,30):
             self.__workers.append(UrlResolverWorker(self, self.__queue, self.__resolverCache, i))
         self.__lastReportedQueueSize = None
 

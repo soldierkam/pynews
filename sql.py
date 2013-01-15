@@ -19,7 +19,7 @@ class UserE(Base):
     statusesCount = Column(Integer, nullable=False)
     createdAt = Column(Integer, nullable=False)
     tweets = relationship("TweetE", backref="user")
-    cats = relationship("UserCatEntry", backref="user")
+    #cats = relationship("UserCatEntry", backref="user")
 
     def copy(self):
         v = {}
@@ -28,7 +28,7 @@ class UserE(Base):
         v["followers"] = self.followersCount
         v["statuses"] = self.statusesCount
         v["createdAt"] = self.createdAt
-        v["cats"] = [catEntry.copy() for catEntry in self.cats]
+        #v["cats"] = [catEntry.copy() for catEntry in self.cats]
         return v
 
     def __repr__(self):
@@ -39,15 +39,15 @@ class UserE(Base):
             return False
         return self.id == other.id
 
-class UserCatEntry(Base):
-    __tablename__ = 'user_cats'
-
-    user_id = Column(BigInteger, ForeignKey('users.id'))
-    cat = Column(String(10), nullable=False)
-    count = Column(Integer, nullable=False, default=0)
-
-    def copy(self):
-        return {self.cat: self.count}
+#class UserCatEntry(Base):
+#    __tablename__ = 'user_cats'
+#
+#    user_id = Column(BigInteger, ForeignKey('users.id'))
+#    cat = Column(String(10), nullable=False)
+#    count = Column(Integer, nullable=False, default=0)
+#
+#    def copy(self):
+#        return {self.cat: self.count}
 
 association_table = Table('association', Base.metadata,
     Column('tweet_id', Integer, ForeignKey('tweets.id')),

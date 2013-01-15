@@ -1,4 +1,6 @@
 # -*- coding: utf-8 *-*
+import socket
+import threading
 from nltk import FreqDist
 import sys
 from classifier import TxtClassificatorWrapper
@@ -177,11 +179,13 @@ class Model(StoppableThread):
         self.__tweetResolvedListener = ResolvedTweetQueue(streamDir=streamDir, userDir=userDir, userBuilder=self.__userBuilder, urlBuilder=self.__urlBuilder)
         self.__urlResolver = UrlResolverManager(os.path.join(streamDir, "urlResolverCache.db2"), self.__tweetResolvedListener)
         self.__refreshGui = Event()
+        self.__refreshStatusBar = Event()
         self.__showProbDist = Event()
         self.__probDistUrl = None
         Publisher.subscribe(self.onPauseJob, "model.pause")
         Publisher.subscribe(self.onResumeJob, "model.start")
         Publisher.subscribe(self.onRefreshGui, "model.refreshGui")
+        Publisher.subscribe(self.onRefreshStatusBar, "model.refreshStatusBar")
         Publisher.subscribe(self.onProbDist, "model.prob_dist")
         Publisher.subscribe(self.onShowTreeMap, "model.showTreeMap")
         self.doPauseJob()
@@ -189,6 +193,9 @@ class Model(StoppableThread):
 
     def onRefreshGui(self, msg):
         self.__refreshGui.set()
+
+    def onRefreshStatusBar(self, msg):
+        self.__refreshStatusBar.set()
 
     def onPauseJob(self, msg):
         d = msg.data
@@ -262,24 +269,30 @@ class Model(StoppableThread):
             self.__refreshGui.clear()
             data = {}
             data["urls"] = self.__tweetResolvedListener.finalUrls()
-            data["cache"] = self.__urlResolver.cacheHitRate()
-            data["position"] = self.__iter.position()
-            data["position_end"] = self.__iter.count()
-            data["current_file_c"] = self.__iter.currentFile()
-            data["last_file_c"] = self.__iter.filesCount()
             Publisher.sendMessage("update.urls", data=data)
         if self.__showProbDist.isSet():
             url = self.__probDistUrl
             self.__showProbDist.clear()
             self.__probDistUrl = None
             probDistI = TxtClassificatorWrapper.instance().probDist(url.getText())
+        if self.__refreshStatusBar.isSet():
+            self.__refreshStatusBar.clear()
+            data = {}
+            data["cache"] = self.__urlResolver.cacheHitRate()
+            data["position"] = self.__iter.position()
+            data["position_end"] = self.__iter.count()
+            data["current_file_c"] = self.__iter.currentFile()
+            data["last_file_c"] = self.__iter.filesCount()
+            Publisher.sendMessage("update.statusBar", data=data)
 
     def stop(self):
         StoppableThread.stop(self)
         self.__urlResolver.stop()
         self.__tweetResolvedListener.stop()
+        logger.info("Wait for thread: " + ','.join([t.name for t in threading.enumerate()]))
 
 def main():
+    socket.setdefaulttimeout(60)
     mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews"
     tweetsDir = os.path.join(mainDir, "stream", "tweets")
     logger.info("Start app")
