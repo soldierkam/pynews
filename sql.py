@@ -125,7 +125,7 @@ class SqlModel():
 
     def urlExists(self, urlObj):
         try:
-            self.__session.query(UrlE).filter(UrlE.digest == urlObj.getUrlExpDigest()).one()
+            self.__session.query(UrlE).filter(UrlE.digest == urlObj.getRealUrlDigest()).one()
             return True
         except NoResultFound, e:
             return False
@@ -154,7 +154,7 @@ class SqlModel():
 
     def _selectOrCreateUrl(self, u):
         url = UrlE()
-        url.digest = u.getUrlExpDigest()
+        url.digest = u.getRealUrlDigest()
         for c in u.documentClasses():
             if c in ["short", "medium", "long"]:
                 url.len = c
@@ -165,7 +165,7 @@ class SqlModel():
         url.tcoUrl = u.getUrl()
         url.text = u.getText()
         url.title = u.getTitle()
-        url.url = u.getExpandedUrl()
+        url.url = u.getRealUrl()
         #self.__session.merge(url)
         return url
 

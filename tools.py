@@ -1,13 +1,12 @@
 # -*- coding: utf-8 *-*
+import codecs
 
 from datetime import datetime
 from threading import Thread, Event
 import threading
-from boilerpipe.extract import Extractor
 from logger import logger
-import time
+import time, os, random
 from hashlib import sha1
-from BeautifulSoup import BeautifulSoup
 
 class RateMonitor():
 
@@ -50,6 +49,78 @@ class NothingToDo(Exception):
 
     def __init(self):
         pass
+
+
+class RssDataReader():
+
+    def __init__(self, dir, testDir=None):
+        self.__dir = dir
+        self.__testDir = testDir or dir
+        self.__filenameToUrl = self._readLogFile()
+
+    def _readLogFile(self):
+        results = {}
+        self._parseLog(os.path.join(self.__dir, "urls.txt"), results)
+        self._parseLog(os.path.join(self.__testDir, "urls.txt"), results)
+        return results
+
+    def _parseLog(self, file, results):
+        f = open(file)
+        for line in f.readlines():
+            filename, url = self._parseLogLine(line)
+            if filename is not None and url is not None:
+                results[filename] = url
+        f.close()
+
+    def _parseLogLine(self, line):
+        if " : " in line:
+            parts = line.split(" : ")
+            filename = parts[0].strip().split("/")[1].replace(".html", ".txt")
+            url = parts[1].strip()
+            return filename, url
+        else:
+            logger.error(u"Wrong line: " + unicode(line))
+            return None, None
+
+    def documents(self, klassId):
+        l = self._getDocuments(klassId, self.__dir)
+        logger.info(u"Read %d documents from %s (%s)" % (len(l), self.__dir, klassId))
+        return l
+
+    def _testDocuments(self, klassId, n=1000):
+        l = self._getDocuments(klassId, self.__testDir, n * 3)
+        keys = l.keys()
+        random.shuffle(keys)
+        keys = keys[:n]
+        l = {key: l[key] for key in keys}
+        logger.info("Read %d test documents from %s (%s)" % (len(l), self.__testDir, klassId))
+        return l
+
+
+    def _getDocuments(self, klassId, dir, limit=None):
+        klassDir = os.path.join(dir, klassId)
+        results = {}
+        counter = 0
+        for file in os.listdir(klassDir):
+            if file.endswith(".txt"):
+                #fd = open(os.path.join(klassDir, file))
+                fd = codecs.open(os.path.join(klassDir, file), "r", encoding="UTF-8")
+                if not self.__filenameToUrl.has_key(file):
+                    continue
+                url = self.__filenameToUrl[file]
+                results[url] = fd.read()
+                fd.close()
+                counter += 1
+                if limit is not None and counter >= limit:
+                    break
+        return results
+
+    def klasses(self, ignoreKlass = [], includeKlass = None):
+        results = []
+        for dirEntry in os.listdir(self.__dir):
+            if os.path.isdir(os.path.join(self.__dir, dirEntry)) and dirEntry not in ignoreKlass and (includeKlass is None or dirEntry in includeKlass):
+                results.append(dirEntry)
+        return results
 
 class StoppableThread(Thread):
 
@@ -119,101 +190,3 @@ class StoppableThread(Thread):
 def stringToDigest(string):
     return sha1(string).hexdigest()
 
-def isSubstr(find, data):
-    if len(data) < 1 and len(find) < 1:
-        return False
-    for i in range(len(data)):
-        if find not in data[i]:
-            return False
-    return True
-
-def longSubstr(data):
-    substr = ''
-    if len(data) > 1 and len(data[0]) > 0:
-        for i in range(len(data[0])):
-            for j in range(len(data[0])-i+1):
-                if j > len(substr) and isSubstr(data[0][i:i+j], data):
-                    substr = data[0][i:i+j]
-    return substr
-
-def longSubstrPair(data):
-    #logger.info(u"Data: " + u'\n-'.join([txt + "//" + type for txt, type in data]))
-    results = []
-    for elem1 in data:
-        for elem2 in data:
-            if elem1 is not elem2 and elem1[1] != elem2[1]:
-                substr = longSubstr([elem1[0], elem2[0]])
-                #logger.info(u"\n\"" + unicode(elem1) + u"\"\n\"" + unicode(elem2) + u"\"\nis:\n\"" + unicode(substr) + u"\"")
-                if len(substr) > 10:
-                    results.append(substr)
-    results = sorted(results, key = lambda x: len(x), reverse=True)
-    #logger.info(results)
-    #logger.info(u"Results: " + u'\n-'.join(results))
-    return results[0] if len(results) > 0 else ""
-
-def __fixChars(text):
-    return text.replace(unichr(160), " ")
-
-def fetchTitle(html, titles = None):
-    if titles is None:
-        titles = []
-    bs = BeautifulSoup(html, convertEntities=BeautifulSoup.HTML_ENTITIES)
-    metaTitle = bs.find("title")
-    defaultTitle = ""
-    if metaTitle:
-        tagContent = __fixChars(u''.join(metaTitle.findAll(text=True)))
-        defaultTitle = tagContent.strip()
-        titles.append((defaultTitle, "meta"))
-    heads = []
-    for i in [1, 2, 3, 4, 5]:
-        tagsH =bs.findAll("h" + str(i))
-        for tagH in tagsH:
-            tagContent = __fixChars(u''.join(tagH.findAll(text=True)))
-            titles.append((tagContent.strip(), "h"))
-            heads.append(tagContent.strip())
-    longestSubstring = longSubstrPair(titles).strip().replace("\n", " ").replace("\t", " ")
-    #logger.info(u"Title: " + unicode(title))
-    longestSubstring = longestSubstring or defaultTitle
-    title = longestSubstring
-    title = __findHeader(heads, title)
-    #obcinamy zbędne spacje
-    while True:
-        titleTmp = title.replace("  ", " ")
-        if titleTmp == title:
-            break
-        title = titleTmp
-    return title
-
-def __findHeader(heads, title):
-    #szukamy nagłówka który zawiera tytuł
-    results = {}
-    for h in heads:
-        l = len(longSubstr([title, h]))
-        t = len(title)
-        if h in title and l <= t :
-            results[h] = l
-    if results:
-        return sorted(results.items(), key=lambda x: x[1], reverse=True)[0][0]
-    return title
-
-def fetchTitleByUrl(url, titles=None):
-    extractor = Extractor(extractor='ArticleExtractor', url=url)
-    html =  extractor.data
-    return fetchTitle(html, titles)
-
-if __name__ == "__main__":
-    #data = [u"'Striking Mom' Jessica Stilwell: blog extracts - Telegraph", u"'Striking Mom' Jessica Stilwell: blog extracts", u"Good on her! 'Striking Mom' Jessica Stilwell: blog extracts via @Telegraph http://t.co/I90LwcR6"]
-    #print longSubstrPair(data)
-    #data = [u"Public Speaking: Already a Decent Speaker? Here Are 5 Expert Tips | Inc.com", u"Already a Decent Speaker? Here Are 5 Expert Tips", u"RT @Inc: MT @avemii: a few #speakingintech tips from @Inc: http://t.co/yKH29bHq I think the last one—practicing a lot—may be the best tip"]
-    #print longSubstrPair(data)
-    #data = [u"BBC News - Abdominal aortic aneurysm screening rollout in Wales", u"Abdominal aortic aneurysm screening rollout in Wales", u"RT @bbchealth: Aneurysm scans rollout in Wales http://t.co/B0mjQwA6"]
-    #print longSubstrPair(data)
-    #data = [u"Threats and silence: the intimidation by Rangers fans | Alex Thomson's View", u"Threats and silence: the intimidation by Rangers fans", u"Alex Thomson's View", u"There are 151 comments on this post", u"Have your say", u"TOMOBLOG RANGERS INTIMIDATION"]
-    #print longSubstrPair(data)
-    logger.info(fetchTitleByUrl("http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/"))
-    logger.info(fetchTitleByUrl("http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea"))
-    logger.info(fetchTitleByUrl("http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html"))
-    logger.info(fetchTitleByUrl("http://www.france24.com/en/20121012-mars-rover-makes-surprising-rock-find?utm_source=dlvr.it&utm_medium=twitter"))
-    logger.info(fetchTitleByUrl("http://globalgrind.com/news/russell-simmons-womens-rights-romney-obama-vote"))
-    logger.info(fetchTitleByUrl("http://www.lancashiretelegraph.co.uk/sport/football/blackburn_rovers/news/9981760.Ewood_fears_as_manager_search_goes_on/?ref=twt"))
-    logger.info(fetchTitleByUrl("http://buildmemuscle.wordpress.com/2012/10/11/great-leg-workout/"))

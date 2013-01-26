@@ -3,14 +3,15 @@ from Queue import Queue, Empty
 import shelve
 from threading import Semaphore
 import threading
-from urllib2 import URLError, HTTPError
+from urllib2 import URLError, HTTPError, HTTPRedirectHandler
 import urllib2
 from urlparse import urlparse
 from boilerpipe.extract import Extractor
 from lang import LangDetect
 from logger import logger
 import sqlite
-from tools import StoppableThread, stringToDigest, fetchTitle
+from tools import StoppableThread, stringToDigest
+from title import fetchTitle
 from wx.lib.pubsub.pub import Publisher
 
 class PutMsg(object):
@@ -29,14 +30,10 @@ class GetMsg(object):
     def __init__(self, url):
         self.__url = url.getExpandedUrl()
         self.__digest = url.getUrlExpDigest()
-        self.__digestOld = url.getUrlDigest()
         self.__mutex = Semaphore(0)
 
     def digest(self):
         return self.__digest
-
-    def digestOld(self):
-        return self.__digestOld
 
     def setResponse(self, res):
         self.__response = res
@@ -94,15 +91,15 @@ class UrlResolverCache(StoppableThread):
                 self.__shelve[resolvedUrl.getUrlExpDigest()] = {"text": None if resolvedUrl.isError() else resolvedUrl.getText(),
                                                              "htm": None if resolvedUrl.isError() else resolvedUrl.getHtml(),
                                                              "url": resolvedUrl.getExpandedUrl(),
+                                                             "real_url": resolvedUrl.getRealUrl(),
                                                              "error": resolvedUrl.isError()}
                 self.__size += 1
             elif type(msg) is GetMsg:
                 cv = None
                 has = self.__shelve.has_key(msg.digest())
-                hasOld = self.__shelve.has_key(msg.digestOld())
-                if has or hasOld:
-                    cv = self.__shelve.get(msg.digest()) if has else self.__shelve.get(msg.digestOld())
-                    if "htm" not in cv:
+                if has:
+                    cv = self.__shelve.get(msg.digest())
+                    if "htm" not in cv or "real_url" not in cv:
                         logger.info(u"Cached value do not contains data: " + unicode(cv))
                         del self.__shelve[msg.digest()]
                         cv = None
@@ -112,12 +109,6 @@ class UrlResolverCache(StoppableThread):
                             cv["url"] = msg.getUrl()
                             self.__shelve[msg.digest()] = cv
                         self.__hits += 1
-                        if hasOld:
-                            logger.info(u"Change key")
-                            cv["url"] = msg.getUrl()
-                            self.__shelve[msg.digest()] = cv
-                            del self.__shelve[msg.digestOld()]
-
                 else:
                     logger.info(u"Cannot find url in cache: " + unicode(msg.getUrl()))
                 msg.setResponse(cv)
@@ -143,6 +134,16 @@ class UrlResolver():
     def isStopping(self):
         return False
 
+    def __download(self, url):
+        opener = urllib2.build_opener(HTTPRedirectHandler())
+        ct = opener.open(url)
+        url = ct.geturl()
+        if ct.headers.has_key("Content-Length"):
+            size = int(ct.headers["Content-Length"])
+            if size > 2 * 1024 * 1024:
+                raise ValueError(u"Too big: " + url)
+        return ct.read(), url
+
     def resolve(self):
         tryNumber = 0
         cachable = True
@@ -152,12 +153,12 @@ class UrlResolver():
             try:
                 #urlStr = url.getExpandedUrl() or url.getUrl()
                 logger.debug(u"Try  " + unicode(tryNumber))
-                extractor = Extractor(extractor='ArticleExtractor', url=self.__url.getUrl())
-                text = extractor.getText()
+                data, url = self.__download(self.__url.getUrl())
+                text = Extractor(extractor='ArticleExtractor', html=data).getText()
                 if text is None:
                     raise ValueError("Extracted text is None")
                 logger.debug(u"Set text " + unicode(self.__url))
-                self.__url.setTextAndHtml(text, extractor.data)
+                self.__url.setTextAndHtmlAndUrl(text, data, url)
                 self.__cache.put(self.__url)
                 self.__mgr.afterResolveUrl(self.__url)
                 if tryNumber > 0:
@@ -387,6 +388,7 @@ class Url:
         self.__state = None
         self.__url = entity["url"]
         self.__expanded = entity["expanded_url"]
+        self.__realUrl = entity["expanded_url"]
         self.__validateUrl(self.__url, entity)
         self.__validateUrl(self.__expanded, entity)
         self.__text = None
@@ -438,17 +440,17 @@ class Url:
         values["text"] = self.__text
         values["lang"] = self.__lang
         values["title"] = self.getTitle()
-        values["tweets"] = [t.dump() for t in self.__tweets]
+        values["tweet"] = self.__tweet.dump()
         return values
 
     def __eq__(self, other):
         if other and isinstance(other, Url):
-            return self.__expanded == other.__expanded
+            return self.__realUrl == other.__realUrl
         else:
             return False
 
     def __hash__(self):
-        return 3 + 7 * self.__url.__hash__()
+        return 3 + 7 * self.__realUrl.__hash__()
 
     def getText(self):
         if self.__text is None:
@@ -469,14 +471,17 @@ class Url:
     def isError(self):
         return self.__error
 
-    def setTextAndHtml(self, text, html):
+    def setTextAndHtmlAndUrl(self, text, html, url):
         if text is None:
             raise ValueError("Text is None!")
         if html is None:
             raise ValueError("HTML is None!")
+        if url is None:
+            raise ValueError("URL is None!")
         logger.info("Url " + self.__url + " resolved")
         self.__text = text
         self.__html = html
+        self.__realUrl = url
         try:
             self.__lang = LangDetect.instance().detect(text) if text else None
         except BaseException as e:
@@ -515,11 +520,17 @@ class Url:
     def getUrlExpDigest(self):
         return stringToDigest(self.getExpandedUrl())
 
+    def getRealUrlDigest(self):
+        return stringToDigest(self.getRealUrl())
+
     def getUrl(self):
         return self.__url
 
     def getExpandedUrl(self):
         return self.__expanded
+
+    def getRealUrl(self):
+        return self.__realUrl
 
     def isResolved(self):
         return self.__text != None
@@ -543,7 +554,7 @@ class Url:
         self.__newsCategory = cat
 
     def __unicode__(self):
-        return u"{URL: " + unicode(self.__expanded) + u", cat:" + unicode(self.__newsCategory) + u", lang:" + unicode(self.__lang) + u"}"
+        return u"{URL: " + unicode(self.__expanded) + u", cat:" + unicode(self.__newsCategory) + u", lang:" + unicode(self.__lang) + u", title:" + unicode(self.__title) + u"}"
 
     def __str__(self):
         return self.__unicode__()

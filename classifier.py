@@ -4,6 +4,7 @@ from logger import logger
 from news import NewsClassificator
 import os
 from tools import StoppableThread, NothingToDo
+from google_rss import HEADLINES, SPOTLIGHT, NATION
 
 class TxtClassificatorWrapper():
 
@@ -15,7 +16,7 @@ class TxtClassificatorWrapper():
             self.__i = 0
             return
         self.__documentSizeClassificator = DocumentSizeClustering("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db")
-        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/", doTest=False)
+        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/", doTest=False, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])
 
 
     @staticmethod

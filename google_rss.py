@@ -1,10 +1,12 @@
 import Queue
 from Queue import Empty
 import codecs
-from datetime import time
+import time
 import logging
 import os
-from inliner import REMOVE
+import urllib
+from nltk.downloader import urllib2
+from inliner import REMOVE, DO_NTH
 from tools import stringToDigest
 import random
 import feedparser
@@ -60,20 +62,20 @@ class GoogleNewsUrl():
 
 class RssAnalyzer():
 
-    def __init__(self, dir):
-        self.__downloader = UrlDownloaderController(dir)
+    def __init__(self, dir, langs = ["us", "uk", "au", "en_ca"], langAsKlass=False):
+        self.__downloader = UrlDownloaderController(dir, langAsKlass=langAsKlass)
         self.__pollers = []
-        for lang in ["us", "uk", "au", "en_ca"]:
+        for lang in langs:
             for topic in [HEADLINES, WORLD, NATION, SCIENCE, TECHNOLOGY, ELECTIONS, POLITICS, ENTERTAINMENT, SPORT, HEALTH, BUSINESS]:
                 url = GoogleNewsUrl().setEdition(lang).setTopic(topic).build()
                 p = RssPoller(url, topic, lang, self)
                 self.__pollers.append(p)
                 p.start()
 
-    def addToQueue(self, url, topic):
-        return self.__downloader.addToQueue(url, topic)
+    def addToQueue(self, url, edition, topic):
+        return self.__downloader.addToQueue(url, edition, topic)
 
-INTERVAL = 60
+INTERVAL = 300
 
 class RssPoller(StoppableThread):
 
@@ -95,20 +97,21 @@ class RssPoller(StoppableThread):
         feed = feedparser.parse(self.__url)
         c = 0
         for item in feed["items"]:
-            c += 1 if self.__rssAnalyzer.addToQueue(item["links"][0]["href"], self.__topic) else 0
+            c += 1 if self.__rssAnalyzer.addToQueue(item["links"][0]["href"], self.__lang, self.__topic) else 0
         logger.info("Add " + str(c) + " urls to queue (" + self.__topic + ")")
         self.__secondsSinceLastCheck = 0
 
 
 class UrlDownloaderController():
 
-    def __init__(self, dir, workers=5):
+    def __init__(self, dir, workers=5, langAsKlass= False):
+        self.__langAsKlass = langAsKlass
         self.__dir = dir
         if not os.path.exists(dir):
             os.makedirs(dir)
         pageLogger = logging.getLogger('pageDownloader')
         pageLogger.setLevel(logging.ERROR)
-        self.__pageDownloader = PageDownloader(logger=pageLogger, iframes=REMOVE, js=REMOVE)
+        self.__pageDownloader = PageDownloader(logger=pageLogger, iframes=REMOVE, js=REMOVE, img=DO_NTH)
         self.__logFile = open(os.path.join(dir, "urls.txt"), "a")
         self.__downloaders = []
         self.__pending = []
@@ -118,17 +121,18 @@ class UrlDownloaderController():
             self.__downloaders.append(d)
             d.start()
 
-    def addToQueue(self, url, topic):
-        topicDir = os.path.join(self.__dir, topic)
-        if not os.path.exists(topicDir):
-            os.makedirs(topicDir)
+    def addToQueue(self, url, edition, topic):
+        klassDir = os.path.join(self.__dir, edition if self.__langAsKlass else topic)
+        if not os.path.exists(klassDir):
+            os.makedirs(klassDir)
         uuid = stringToDigest(url)
         idx = url.index("&url=") + 5
         url = url[idx:]
-        if uuid in self.__pending:
+        url = urllib.unquote(url)
+        htmlFilename =  os.path.join(klassDir, uuid + ".html")
+        txtFilename =  os.path.join(klassDir, uuid + ".txt")
+        if uuid in self.__pending or os.path.exists(txtFilename):
             return False
-        htmlFilename =  os.path.join(topicDir, uuid + ".html")
-        txtFilename =  os.path.join(topicDir, uuid + ".txt")
         if not os.path.exists(htmlFilename) or not os.path.exists(txtFilename):
             self.__pending.append(uuid)
             self.__queue.put({"url": url, "html": htmlFilename, "txt": txtFilename, "uuid": uuid})
@@ -167,7 +171,7 @@ class UrlDownloader(StoppableThread):
             outputHtmlFilename = job["html"]
             outputTxtFilename = job["txt"]
             logger.info("Download: " + urlAddr)
-            self.__pageDownloader.download(urlAddr, outputHtmlFilename)
+            #self.__pageDownloader.download(urlAddr, outputHtmlFilename)
             extractor = Extractor(extractor='ArticleExtractor', url=urlAddr)
             f = codecs.open(outputTxtFilename, "w", "utf-8")
             f.write(extractor.getText())
@@ -183,4 +187,4 @@ class UrlDownloader(StoppableThread):
         self.__ctrl.onWorkerStop(self)
 
 if __name__ == "__main__":
-    RssAnalyzer("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/googlenews/")
+    RssAnalyzer("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/googlenews-26.01/")
