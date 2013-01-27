@@ -212,4 +212,4 @@ class UrlDownloader(StoppableThread):
         self.__ctrl.onWorkerStop(self)
 
 if __name__ == "__main__":
-    RssAnalyzer("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/googlenews-26.01/")
+    RssAnalyzer("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/googlenews-27.01/")

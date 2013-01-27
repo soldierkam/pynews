@@ -139,6 +139,7 @@ if __name__ == "__main__":
         #"/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/",
         "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/googlenews-26.01/",
         #testDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-3.12/",
+        #testDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/",
         doTest=True,
         ignoreKlass = [HEADLINES, SPOTLIGHT, NATION],
         includeKlass = None #[SPORT, POLITICS]
