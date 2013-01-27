@@ -54,7 +54,7 @@ def longSubstrPair(data):
                 if len(substr) > 10:
                     results.append(substr)
     results = sorted(results, key = lambda x: len(x), reverse=True)
-    logger.info(u"Results: " + u'\n-'.join(results))
+    #logger.info(u"Results: " + u'\n-'.join(results))
     return results[0] if len(results) > 0 else ""
 
 def __fixChars(text):
@@ -77,7 +77,7 @@ def fetchTitle(html, titles = None):
         tagContent = __fixChars(u''.join(metaTitle.findAll(text=True)))
         defaultTitle = tagContent
         titles.append((defaultTitle, "meta"))
-    logger.info(u"Default title: " + unicode(defaultTitle))
+    #logger.info(u"Default title: " + unicode(defaultTitle))
     heads = []
     for i in [1, 2, 3, 4, 5]:
         tagsH =bs.findAll("h" + str(i))
@@ -85,9 +85,9 @@ def fetchTitle(html, titles = None):
             tagContent = __fixChars(u''.join(tagH.findAll(text=True)))
             titles.append((tagContent, "h"))
             heads.append(tagContent)
-    logger.info(u"Titles: " + unicode(titles))
+    #logger.info(u"Titles: " + unicode(titles))
     longestSubstring = longSubstrPair(titles)
-    logger.info(u"Longest substring: " + unicode(longestSubstring))
+    #logger.info(u"Longest substring: " + unicode(longestSubstring))
     longestSubstring = longestSubstring or defaultTitle
     title = longestSubstring
     title = __findHeader(heads, title)
@@ -97,7 +97,7 @@ def fetchTitle(html, titles = None):
         if titleTmp == title:
             break
         title = titleTmp
-    return title
+    return title or defaultTitle
 
 def __findHeader(heads, title):
     #szukamy nagłówka który zawiera tytuł

@@ -1,12 +1,15 @@
 import Queue
 from Queue import Empty
 import codecs
+import cookielib
 import time
 import logging
 import os
 import urllib
+from urllib2 import HTTPRedirectHandler, HTTPCookieProcessor
+import chardet
 from nltk.downloader import urllib2
-from inliner import REMOVE, DO_NTH
+from inliner import REMOVE, DO_NTH, Content
 from tools import stringToDigest
 import random
 import feedparser
@@ -164,7 +167,26 @@ class UrlDownloader(StoppableThread):
         self.__queue = queue
         self.__callback = callback
 
+
+    def __download(self, url):
+        cj = cookielib.CookieJar()
+        opener = urllib2.build_opener(HTTPRedirectHandler(), HTTPCookieProcessor(cj))
+        opener.addheaders = [('User-agent', 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)')]
+        ct = opener.open(url)
+        url = ct.geturl()
+        if ct.headers.has_key("Content-Length"):
+            size = int(ct.headers["Content-Length"])
+            if size > 2 * 1024 * 1024:
+                raise ValueError(u"Too big: " + url)
+        contentType = ct.headers["content-type"] if ct.headers.has_key("content-type") else None
+        content = Content(ct.read(), contentType)
+        if content.mime() != "text/html":
+            raise ValueError(u"Wrong mime: " + content.mime() + u"(" + url + u")")
+        return content, url
+
     def runPart(self):
+        job = None
+        urlAddr = None
         try:
             job = self.__queue.get()
             urlAddr = job["url"]
@@ -172,7 +194,10 @@ class UrlDownloader(StoppableThread):
             outputTxtFilename = job["txt"]
             logger.info("Download: " + urlAddr)
             #self.__pageDownloader.download(urlAddr, outputHtmlFilename)
-            extractor = Extractor(extractor='ArticleExtractor', url=urlAddr)
+            content, url = self.__download(urlAddr)
+            encoding = content.encoding() or chardet.detect(content.data())['encoding'] or "ISO-8859-1"
+            data = unicode(content.data(), encoding)
+            extractor = Extractor(extractor='ArticleExtractor', html=data)
             f = codecs.open(outputTxtFilename, "w", "utf-8")
             f.write(extractor.getText())
             f.close()

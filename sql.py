@@ -87,7 +87,7 @@ class UrlE(Base):
     url = Column(String(512), nullable=False)
     text = Column(Text(), nullable=False)
     title = Column(String(256), nullable=False)
-    html = Column(Text(), nullable=False)
+    #html = Column(Text(), nullable=False)
     cat = Column(String(5), nullable=False)
     len = Column(String(10), nullable=False)
     lang = Column(String(2), nullable=False)
@@ -99,7 +99,7 @@ class UrlE(Base):
         v["tco"] = self.tcoUrl
         v["text"] = self.text
         v["title"] = self.title
-        v["html"] = self.html
+        #v["html"] = self.html
         v["cat"] = self.cat
         v["len"] = self.len
         v["lang"] = self.lang
@@ -160,7 +160,7 @@ class SqlModel():
                 url.len = c
             else:
                 url.cat = c
-        url.html = u.getHtml()
+        #url.html = u.getHtml()
         url.lang = u.lang()
         url.tcoUrl = u.getUrl()
         url.text = u.getText()

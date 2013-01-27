@@ -1,12 +1,14 @@
 # -*- coding: utf-8 *-*
 from Queue import Queue, Empty
-import shelve
+import cookielib
 from threading import Semaphore
 import threading
-from urllib2 import URLError, HTTPError, HTTPRedirectHandler
+from urllib2 import URLError, HTTPError, HTTPRedirectHandler, HTTPCookieProcessor
 import urllib2
 from urlparse import urlparse
 from boilerpipe.extract import Extractor
+import chardet
+from inliner import Content
 from lang import LangDetect
 from logger import logger
 import sqlite
@@ -84,7 +86,7 @@ class UrlResolverCache(StoppableThread):
             self.__msgCount += 1
             self.__msgCount %= 60
             msg = self.__queue.get(block=True, timeout=3)
-            logger.debug("Msg: " + str(msg))
+            logger.debug(u"Msg: " + unicode(msg))
             if type(msg) is PutMsg:
                 resolvedUrl = msg.getUrl()
                 logger.debug(u"Put extracted url text in shelve: " + unicode(resolvedUrl))
@@ -134,15 +136,21 @@ class UrlResolver():
     def isStopping(self):
         return False
 
-    def __download(self, url):
-        opener = urllib2.build_opener(HTTPRedirectHandler())
-        ct = opener.open(url)
+    def __download(self, u):
+        cj = cookielib.CookieJar()
+        opener = urllib2.build_opener(HTTPRedirectHandler(), HTTPCookieProcessor(cj))
+        opener.addheaders = [('User-agent', 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)')]
+        ct = opener.open(u)
         url = ct.geturl()
         if ct.headers.has_key("Content-Length"):
             size = int(ct.headers["Content-Length"])
             if size > 2 * 1024 * 1024:
                 raise ValueError(u"Too big: " + url)
-        return ct.read(), url
+        contentType = ct.headers["content-type"] if ct.headers.has_key("content-type") else None
+        content = Content(ct.read(), contentType)
+        if content.mime() != "text/html":
+            raise ValueError(u"Wrong mime: " + content.mime() + u"(" + url + u")")
+        return content, url
 
     def resolve(self):
         tryNumber = 0
@@ -153,7 +161,9 @@ class UrlResolver():
             try:
                 #urlStr = url.getExpandedUrl() or url.getUrl()
                 logger.debug(u"Try  " + unicode(tryNumber))
-                data, url = self.__download(self.__url.getUrl())
+                content, url = self.__download(self.__url.getExpandedUrl())
+                encoding = content.encoding() or chardet.detect(content.data())['encoding'] or "ISO-8859-1"
+                data = unicode(content.data(), encoding)
                 text = Extractor(extractor='ArticleExtractor', html=data).getText()
                 if text is None:
                     raise ValueError("Extracted text is None")
@@ -223,7 +233,7 @@ class UrlResolverWorker(StoppableThread):
                     self.__mgr.afterResolveUrl(url)
                     return
                 else:
-                    url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
+                    url.setTextAndHtmlAndUrl(cachedValue["text"], cachedValue["htm"], cachedValue["real_url"])
                     self.__mgr.afterResolveUrl(url)
                     return
 
@@ -344,7 +354,7 @@ class UrlSyncResolverManager():
                 url.setError()
                 return
             else:
-                url.setTextAndHtml(cachedValue["text"], cachedValue["htm"])
+                url.setTextAndHtmlAndUrl(cachedValue["text"], cachedValue["htm"], cachedValue["real_url"])
                 return
         resolver = UrlResolver(url, self, self.__resolverCache)
         if resolver.resolve():
@@ -454,7 +464,7 @@ class Url:
 
     def getText(self):
         if self.__text is None:
-            raise ValueError("Text is None: " + unicode(self.__expanded))
+            raise ValueError("Text is None: " + unicode(self.__realUrl))
         return self.__text
 
     def setError(self):
@@ -478,9 +488,11 @@ class Url:
             raise ValueError("HTML is None!")
         if url is None:
             raise ValueError("URL is None!")
-        logger.info("Url " + self.__url + " resolved")
+        logger.info(u"Url " + self.__realUrl + u" resolved")
         self.__text = text
         self.__html = html
+        if self.__realUrl != url:
+            logger.info(u"Redirected from \"" + self.__realUrl + u"\" to \"" + url + u"\"")
         self.__realUrl = url
         try:
             self.__lang = LangDetect.instance().detect(text) if text else None
@@ -554,7 +566,7 @@ class Url:
         self.__newsCategory = cat
 
     def __unicode__(self):
-        return u"{URL: " + unicode(self.__expanded) + u", cat:" + unicode(self.__newsCategory) + u", lang:" + unicode(self.__lang) + u", title:" + unicode(self.__title) + u"}"
+        return u"{URL: " + unicode(self.__realUrl) + u", cat:" + unicode(self.__newsCategory) + u", lang:" + unicode(self.__lang) + u", title:" + unicode(self.__title) + u"}"
 
     def __str__(self):
         return self.__unicode__()
