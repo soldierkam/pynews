@@ -499,12 +499,13 @@ class Url:
         except BaseException as e:
             logger.exception(u"lang detect error: " + unicode(text))
             raise e
-        self.__title = self._fetchTitle(html)
 
     def getHtml(self):
         return self.__html
 
     def getTitle(self):
+        if self.__title is None and self.__html:
+            self.__title = self._fetchTitle(self.__html)
         return self.__title
 
     def _fetchTitle(self, html):
