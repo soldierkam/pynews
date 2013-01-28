@@ -54,7 +54,7 @@ def longSubstrPair(data):
                 if len(substr) > 10:
                     results.append(substr)
     results = sorted(results, key = lambda x: len(x), reverse=True)
-    #logger.info(u"Results: " + u'\n-'.join(results))
+    logger.info(u"Results: " + u'\n-'.join(results))
     return results[0] if len(results) > 0 else ""
 
 def __fixChars(text):
@@ -77,7 +77,7 @@ def fetchTitle(html, titles = None):
         tagContent = __fixChars(u''.join(metaTitle.findAll(text=True)))
         defaultTitle = tagContent
         titles.append((defaultTitle, "meta"))
-    #logger.info(u"Default title: " + unicode(defaultTitle))
+    logger.info(u"Default title: " + unicode(defaultTitle))
     heads = []
     for i in [1, 2, 3, 4, 5]:
         tagsH =bs.findAll("h" + str(i))
@@ -85,9 +85,9 @@ def fetchTitle(html, titles = None):
             tagContent = __fixChars(u''.join(tagH.findAll(text=True)))
             titles.append((tagContent, "h"))
             heads.append(tagContent)
-    #logger.info(u"Titles: " + unicode(titles))
+    logger.info(u"Titles: " + unicode(titles))
     longestSubstring = longSubstrPair(titles)
-    #logger.info(u"Longest substring: " + unicode(longestSubstring))
+    logger.info(u"Longest substring: " + unicode(longestSubstring))
     longestSubstring = longestSubstring or defaultTitle
     title = longestSubstring
     title = __findHeader(heads, title)
@@ -105,7 +105,7 @@ def __findHeader(heads, title):
     for h in heads:
         l = len(longSubstr([title, h]))
         t = len(title)
-        if h in title and l <= t :
+        if isIn(h, title) and l <= t :
             results[h] = l
     if results:
         return sorted(results.items(), key=lambda x: x[1], reverse=True)[0][0]
@@ -157,6 +157,7 @@ if __name__ == "__main__":
     #    u"http://www.villagevoice.com/2012-04-18/news/Mitt-Romney-american-parasite/")
     #__test(u"CSR Racing", "https://itunes.apple.com/app/id469369175?mt=8")
     #__test(u"Romney's Convention Speech Destroyed: How Low Will He Go?", "http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/")
+    __test(u"Funny as Hell – Kodi Me’chele Interview", u"http://www.playasonly.com/funny-as-hell-kodi-me%E2%80%99chele-interview/")
     __test(u"Apple Has Quietly Started Tracking iPhone Users Again, And It's Tricky To Opt Out", u"http://www.businessinsider.com/ifa-apples-iphone-tracking-in-ios-6-2012-10?op=1")
     __test(u"U-KISS’ Dongho to show his comedic side on ‘SNL Korea’", "http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea")
     __test(u"", u"")
