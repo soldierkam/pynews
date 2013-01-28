@@ -16,7 +16,7 @@ class TxtClassificatorWrapper():
             self.__i = 0
             return
         self.__documentSizeClassificator = DocumentSizeClustering("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db")
-        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/", doTest=False, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])
+        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews/", doTest=False, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])
 
 
     @staticmethod

@@ -300,7 +300,7 @@ def main():
     try:
         gui = Gui()
         mgr = StreamMgr(tweetsDir)
-        model = Model(gui, stream=mgr.restore(lastOnly=True), mainDir=mainDir)
+        model = Model(gui, stream=mgr.restore(lastOnly=False), mainDir=mainDir)
     except BaseException:
         logger.exception("Cannot start app")
         if model:
