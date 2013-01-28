@@ -1,9 +1,14 @@
 # -*- coding: utf-8 *-*
 import codecs
+import cookielib
 
 from datetime import datetime
 from threading import Thread, Event
 import threading
+import urllib2
+from urllib2 import HTTPCookieProcessor, HTTPRedirectHandler
+import chardet
+from inliner import Content
 from logger import logger
 import time, os, random
 from hashlib import sha1
@@ -57,6 +62,38 @@ class RssDataReader():
         self.__dir = dir
         self.__testDir = testDir or dir
         self.__filenameToUrl = self._readLogFile()
+        self.__fixRepo()
+
+    def __fixRepo(self):
+        for filename, url in self.__filenameToUrl.iteritems():
+            try:
+                txtfullpath = os.path.join(self.__dir, filename)
+                htmlfullpath = txtfullpath[:-4] + ".html"
+                if not os.path.exists(htmlfullpath):
+                    logger.info("Download: " + url + " to " + htmlfullpath)
+                    content, url = self.__download(url)
+                    f = open(htmlfullpath, "w")
+                    f.write(content.data())
+                    f.close()
+            except:
+                logger.exception("Error")
+
+    def __download(self, url):
+        cj = cookielib.CookieJar()
+        opener = urllib2.build_opener(HTTPRedirectHandler(), HTTPCookieProcessor(cj))
+        opener.addheaders = [('User-agent', 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)')]
+        ct = opener.open(url)
+        url = ct.geturl()
+        if ct.headers.has_key("Content-Length"):
+            size = int(ct.headers["Content-Length"])
+            if size > 2 * 1024 * 1024:
+                raise ValueError(u"Too big: " + url)
+        contentType = ct.headers["content-type"] if ct.headers.has_key("content-type") else None
+        content = Content(ct.read(), contentType)
+        if content.mime() != "text/html":
+            raise ValueError(u"Wrong mime: " + content.mime() + u"(" + url + u")")
+        return content, url
+
 
     def _readLogFile(self):
         results = {}
@@ -75,7 +112,7 @@ class RssDataReader():
     def _parseLogLine(self, line):
         if " : " in line:
             parts = line.split(" : ")
-            filename = parts[0].strip().split("/")[1].replace(".html", ".txt")
+            filename = parts[0].strip().replace(".html", ".txt")
             url = parts[1].strip()
             return filename, url
         else:
@@ -104,10 +141,11 @@ class RssDataReader():
         for file in os.listdir(klassDir):
             if file.endswith(".txt"):
                 #fd = open(os.path.join(klassDir, file))
+                relative = os.path.join(klassId, file)
                 fd = codecs.open(os.path.join(klassDir, file), "r", encoding="UTF-8")
-                if not self.__filenameToUrl.has_key(file):
+                if not self.__filenameToUrl.has_key(relative):
                     continue
-                url = self.__filenameToUrl[file]
+                url = self.__filenameToUrl[relative]
                 results[url] = fd.read()
                 fd.close()
                 counter += 1
