@@ -365,7 +365,11 @@ $jit.TM.Squarified.implement({
     function prepareTweets(tweets){
         $(tweets).each(function(i, tweet){
             var user = tweet.user;
-            user.period = getHoursSinceCreation(tweet) / user.statuses;
+            if(user.statuses){
+                user.period = getHoursSinceCreation(tweet) / user.statuses;
+            }else{
+                user.period = 1;
+            }
         });
         return tweets;
     }
