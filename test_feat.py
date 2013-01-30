@@ -1,6 +1,5 @@
 # -*- coding: utf-8 *-*
 from boilerpipe.extract import Extractor
-import ninja_ide.tools.logger
 from logger import logger
 from news import tokenize
 from tools import RssDataReader

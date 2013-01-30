@@ -56,7 +56,7 @@ class FeatureGenerator():
 
 class NewsClassificator(RssDataReader):
 
-    def __init__(self, dir, testDir=None, doTest = True, ignoreKlass = [], includeKlass = None, extractor = 'ArticleExtractor'):
+    def __init__(self, dir, testDir=None, doTest = True, ignoreKlass = [], includeKlass = None, extractor = 'ArticleExtractor', useHtml=False):
         RssDataReader.__init__(self, dir, testDir)
         logger.info("Start building " + self.__class__.__name__)
         self.__mutex = threading.Semaphore()
@@ -69,9 +69,9 @@ class NewsClassificator(RssDataReader):
         for klassId in self.klasses(ignoreKlass, includeKlass):
             freqDist = FreqDist()
             size = 0
-            for url, html in self.documents(klassId, True):
+            for url, document in self.documents(klassId, useHtml):
                 try:
-                    txt = Extractor(extractor=extractor, html=html).getText()
+                    txt = document if not useHtml else Extractor(extractor=extractor, html=document).getText()
                     documentsWithLabel.append((txt, klassId))
                     txt = tokenize(txt)
                     size += 1
@@ -96,7 +96,7 @@ class NewsClassificator(RssDataReader):
         if doTest:
             ref = []
             test = []
-            testDocumentsWithLabel = [(Extractor(extractor=extractor, html=html).getText(), correctKlass, url) for correctKlass in self.klasses(ignoreKlass, includeKlass) for url, html in self._testDocuments(correctKlass, True)]
+            testDocumentsWithLabel = [(document if not useHtml else Extractor(extractor=extractor, html=document).getText(), correctKlass, url) for correctKlass in self.klasses(ignoreKlass, includeKlass) for url, document in self._testDocuments(correctKlass, useHtml)]
             for doc, cat, url in testDocumentsWithLabel:
                 ans = self.__classifier.classify(self.__featuresGenerator(doc))
                 ref.append(cat)

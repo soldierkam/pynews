@@ -151,7 +151,10 @@ class RssDataReader():
                 if not self.__filenameToUrl.has_key(relative):
                     continue
                 url = self.__filenameToUrl[relative]
-                yield  url, fd.read()
+                result = fd.read()
+                if not result:
+                    continue
+                yield url, result
                 fd.close()
                 counter += 1
                 if limit is not None and counter >= limit:

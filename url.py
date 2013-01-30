@@ -371,7 +371,7 @@ class UrlBuilder():
             logger.info(u"Delete url " + unicode(url))
             self.__mutex.acquire()
             self.__deleted.add(url.getUrlExpDigest())
-            logger.info(u"Delete url: done!")
+            logger.debug(u"Delete url: done! (%s)" % unicode(len(self.__deleted)))
         finally:
             self.__mutex.release()
 

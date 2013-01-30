@@ -243,16 +243,16 @@ class Model(StoppableThread):
             self.__elem = s
             if u'text' in s:
                 try:
-                    tweet = TweetText(s, self.__urlBuilder, self.__userBuilder)
+                    tweet = TweetText(s, self.__urlBuilder, self.__userBuilder, u"s")
                     for url in tweet.urls():
                         self.__urlResolver.addUrlToQueue(url)
-                    retweeted = TweetText(s["retweeted_status"], self.__urlBuilder, self.__userBuilder) if "retweeted_status" in s else None
+                    retweeted = TweetText(s[u"retweeted_status"], self.__urlBuilder, self.__userBuilder, u"r") if  s.has_key(u"retweeted_status") else None
                     if retweeted:
-                        for url in tweet.urls():
+                        for url in retweeted.urls():
                             self.__urlResolver.addUrlToQueue(url)
 
                 except UrlException as e:
-                    logger.warn("Cannot build url: " + str(e))
+                    logger.warn(u"Cannot build url: " + str(e))
             self._doSmthElse()
             self.__elem = None
         except Full:

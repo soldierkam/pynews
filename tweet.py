@@ -5,7 +5,8 @@ from url import UrlException
 
 class TweetText:
 
-    def __init__(self, t, urlBuilder, userBuilder):
+    def __init__(self, t, urlBuilder, userBuilder, d):
+        self.__d = d
         self.__id = t["id"]
         self.__inReplyToId = t["in_reply_to_status_id"]
         self.__retweets = t["retweet_count"]
@@ -79,4 +80,4 @@ class TweetText:
         return tweetResolved
 
     def __str__(self):
-        return u":" + unicode(self.__text) + u"(" + unicode(self.__id) + ")"
+        return u"{TW:" + self.__d + u" " + unicode(self.__text) + u"(" + unicode(self.__id) + u")}"
