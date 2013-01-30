@@ -7,7 +7,6 @@ from threading import Thread, Event
 import threading
 import urllib2
 from urllib2 import HTTPCookieProcessor, HTTPRedirectHandler
-import chardet
 from inliner import Content
 from logger import logger
 import time, os, random
@@ -62,7 +61,7 @@ class RssDataReader():
         self.__dir = dir
         self.__testDir = testDir or dir
         self.__filenameToUrl = self._readLogFile()
-        self.__fixRepo()
+        #self.__fixRepo()
 
     def __fixRepo(self):
         for filename, url in self.__filenameToUrl.iteritems():
@@ -119,39 +118,45 @@ class RssDataReader():
             logger.error(u"Wrong line: " + unicode(line))
             return None, None
 
-    def documents(self, klassId):
-        l = self._getDocuments(klassId, self.__dir)
-        logger.info(u"Read %d documents from %s (%s)" % (len(l), self.__dir, klassId))
+    def documents(self, klassId, html=False):
+        l = self._getDocuments(klassId, self.__dir, html)
+        #logger.info(u"Read %d documents from %s (%s)" % (len(l), self.__dir, klassId))
         return l
 
-    def _testDocuments(self, klassId, n=1000):
-        l = self._getDocuments(klassId, self.__testDir, n * 3)
-        keys = l.keys()
-        random.shuffle(keys)
-        keys = keys[:n]
-        l = {key: l[key] for key in keys}
-        logger.info("Read %d test documents from %s (%s)" % (len(l), self.__testDir, klassId))
+    def _testDocuments(self, klassId, html=False):
+        l = self._getDocuments(klassId, self.__testDir, html)
+        #keys = [url for url, doc in l]
+        #random.shuffle(l)
+        #keys = keys[:n]
+        #l = {key: l[key] for key in keys}
+        #logger.info("Read %d test documents from %s (%s)" % (len(l), self.__testDir, klassId))
         return l
 
 
-    def _getDocuments(self, klassId, dir, limit=None):
+    def _getDocuments(self, klassId, dir, html=False, limit=None):
         klassDir = os.path.join(dir, klassId)
-        results = {}
         counter = 0
         for file in os.listdir(klassDir):
             if file.endswith(".txt"):
                 #fd = open(os.path.join(klassDir, file))
                 relative = os.path.join(klassId, file)
-                fd = codecs.open(os.path.join(klassDir, file), "r", encoding="UTF-8")
+                filename = os.path.join(klassDir, file)
+                if html:
+                    filename = filename[:-4] + ".html"
+                    if not os.path.exists(filename):
+                        continue
+                    fd = open(filename, "r")
+                else:
+                    fd = codecs.open(filename, "r", encoding="UTF-8")
                 if not self.__filenameToUrl.has_key(relative):
                     continue
                 url = self.__filenameToUrl[relative]
-                results[url] = fd.read()
+                yield  url, fd.read()
                 fd.close()
                 counter += 1
                 if limit is not None and counter >= limit:
                     break
-        return results
+
 
     def klasses(self, ignoreKlass = [], includeKlass = None):
         results = []

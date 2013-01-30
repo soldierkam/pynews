@@ -1,5 +1,6 @@
 from __builtin__ import tuple
 import threading
+from boilerpipe.extract import Extractor
 from nltk import PorterStemmer, FreqDist
 from nltk.classify import apply_features
 from nltk.corpus import stopwords, LazyCorpusLoader, CategorizedPlaintextCorpusReader
@@ -55,7 +56,7 @@ class FeatureGenerator():
 
 class NewsClassificator(RssDataReader):
 
-    def __init__(self, dir, testDir=None, doTest = True, ignoreKlass = [], includeKlass = None):
+    def __init__(self, dir, testDir=None, doTest = True, ignoreKlass = [], includeKlass = None, extractor = 'ArticleExtractor'):
         RssDataReader.__init__(self, dir, testDir)
         logger.info("Start building " + self.__class__.__name__)
         self.__mutex = threading.Semaphore()
@@ -64,23 +65,28 @@ class NewsClassificator(RssDataReader):
         ignore = stopwords.words('english')
         features = set()
         klassSize = {}
+        documentsWithLabel = []
         for klassId in self.klasses(ignoreKlass, includeKlass):
             freqDist = FreqDist()
             size = 0
-            for url, txt in self.documents(klassId).items():
-                txt = tokenize(txt)
-                size += 1
-                for part in txt:
-                    if part.isalnum() and part not in ignore:
-                        freqDist.inc(part)
-                        features.add(part)
-                #for bigram in nltk.bigrams(txt):
-                #    freqDist.inc(bigram)
-                #    featureFd.inc(bigram)
+            for url, html in self.documents(klassId, True):
+                try:
+                    txt = Extractor(extractor=extractor, html=html).getText()
+                    documentsWithLabel.append((txt, klassId))
+                    txt = tokenize(txt)
+                    size += 1
+                    for part in txt:
+                        if part.isalnum() and part not in ignore:
+                            freqDist.inc(part)
+                            features.add(part)
+                    #for bigram in nltk.bigrams(txt):
+                    #    freqDist.inc(bigram)
+                    #    featureFd.inc(bigram)
+                except:
+                    logger.exception(u"Url: " + url)
             freqDists[klassId] = freqDist
             klassSize[klassId] = size
 
-        documentsWithLabel = [(document, correctKlass) for correctKlass in self.klasses(ignoreKlass, includeKlass) for url, document in self.documents(correctKlass).items()]
         random.shuffle(documentsWithLabel)
 
         self.__featuresGenerator = FeatureGenerator(freqDists, features, klassSize)
@@ -90,7 +96,7 @@ class NewsClassificator(RssDataReader):
         if doTest:
             ref = []
             test = []
-            testDocumentsWithLabel = [(document, correctKlass, url) for correctKlass in self.klasses(ignoreKlass, includeKlass) for url, document in self._testDocuments(correctKlass).items()]
+            testDocumentsWithLabel = [(Extractor(extractor=extractor, html=html).getText(), correctKlass, url) for correctKlass in self.klasses(ignoreKlass, includeKlass) for url, html in self._testDocuments(correctKlass, True)]
             for doc, cat, url in testDocumentsWithLabel:
                 ans = self.__classifier.classify(self.__featuresGenerator(doc))
                 ref.append(cat)
@@ -143,5 +149,18 @@ if __name__ == "__main__":
         #testDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/",
         doTest=True,
         ignoreKlass = [HEADLINES, SPOTLIGHT, NATION],
-        includeKlass = None #[SPORT, POLITICS]
+        includeKlass = None, #[SPORT, POLITICS]
+        extractor = 'ArticleExtractor'
     )
+
+#    nc = NewsClassificator(
+#        #"/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/",
+#        "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-26.01/",
+#        testDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-27.01/",
+#        #testDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-3.12/",
+#        #testDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-all/",
+#        doTest=True,
+#        ignoreKlass = [HEADLINES, SPOTLIGHT, NATION],
+#        includeKlass = None, #[SPORT, POLITICS]
+#        extractor = 'LargestContentExtractor'
+#    )

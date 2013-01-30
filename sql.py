@@ -58,6 +58,7 @@ class TweetE(Base):
     __tablename__ = "tweets"
 
     id = Column(BigInteger, primary_key=True, autoincrement=False)
+    inReplyToId = Column(BigInteger, nullable=True)
     retweets = Column(Integer, nullable=False)
     text = Column(String(300), nullable=False)
     createdAt = Column(DateTime(timezone=True), nullable=False)
@@ -67,6 +68,7 @@ class TweetE(Base):
     def copy(self):
         v = {}
         v["id"] = self.id
+        v["inReplyToId"] = self.inReplyToId
         v["retweets"] = self.retweets
         v["text"] = self.text
         v["createdAt"] = self.createdAt
@@ -173,6 +175,7 @@ class SqlModel():
         userE = self._selectOrCreateUser(t.user())
         tw = TweetE()
         tw.id = t.id()
+        tw.inReplyToId = t.inReplyToId()
         tw.createdAt = self.__parseDate(t.createdAt())
         tw.retweets = t.retweets()
         tw.text = t.text()

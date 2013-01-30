@@ -5,7 +5,6 @@ from logger import logger
 from news import tokenize
 from tools import RssDataReader
 
-
 dirs = ["/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-27.01/",
         "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-26.01/",
         "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-28.01/",]

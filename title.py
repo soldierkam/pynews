@@ -83,8 +83,9 @@ def fetchTitle(html, titles = None):
         tagsH =bs.findAll("h" + str(i))
         for tagH in tagsH:
             tagContent = __fixChars(u''.join(tagH.findAll(text=True)))
-            titles.append((tagContent, "h"))
-            heads.append(tagContent)
+            if len(tagContent) < 250:
+                titles.append((tagContent, "h"))
+                heads.append(tagContent)
     #logger.info(u"Titles: " + unicode(titles))
     longestSubstring = longSubstrPair(titles)
     #logger.info(u"Longest substring: " + unicode(longestSubstring))

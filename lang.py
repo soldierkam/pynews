@@ -194,7 +194,7 @@ if __name__ == "__main__":
             correctAns = klass2Lang[klass]
             if correctAns in unknownLangs:
                 correctAns = "n/k"
-            for url, doc in data.documents(klass).items():
+            for url, doc in data.documents(klass):
                 if not doc:
                     logger.info("Empty: " + url)
                     continue

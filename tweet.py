@@ -7,6 +7,7 @@ class TweetText:
 
     def __init__(self, t, urlBuilder, userBuilder):
         self.__id = t["id"]
+        self.__inReplyToId = t["in_reply_to_status_id"]
         self.__retweets = t["retweet_count"]
         self.__text = t["text"]
         self.__coordinates = t["coordinates"]["coordinates"] if t["coordinates"] is not None and "coordinates" in t["coordinates"] else None
@@ -44,6 +45,7 @@ class TweetText:
     def dump(self):
         values = {}
         values["id"] = self.__id
+        values["inReplyToId"] = self.__inReplyToId
         values["text"] = self.__text
         values["time"] = self.__createdAt
         values["retweets"] = self.__retweets
@@ -65,6 +67,9 @@ class TweetText:
 
     def id(self):
         return self.__id
+
+    def inReplyToId(self):
+        return self.__inReplyToId
 
     def isResolved(self):
         tweetResolved = True
