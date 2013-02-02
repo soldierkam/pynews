@@ -4,15 +4,14 @@ from logger import logger
 from news import tokenize
 from tools import RssDataReader
 
-dirs = ["/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-27.01/",
-        "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-26.01/",
-        "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-28.01/",]
-for dir in dirs:
-    RssDataReader(dir)
+#dirs = ["/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-27.01/",
+#        "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-26.01/",
+#        "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews-28.01/",]
+#for dir in dirs:
+#    RssDataReader(dir)
 
-text = u"Dozens killed in Venezuelan prison clashes Dozens killed in Venezuelan prison clashes Local Get Email Updates Afternoon Update Email Newsletter Afternoon Update, sent weekday afternoons, keeps you up to date with breaking news and updates from later in the day. Sign Up The Dispatch E-Edition The E-Edition includes all of the news, comics, classifieds and advertisements of the newspaper. And it's available to subscribers before 6 a.m. every day. Current home-delivery subscribers may add Digital D, 24/7 E-Edition and unlimited premium Dispatch.com access, for a nominal additional charge . Or, you can choose a digital-only subscription for unlimited access to the E-Edition via computer and iPad. Subscribe today! Local Stories from ThisWeek "
-text2 = u"Anti-Hagel forces keep up their media blitz Date Print A NEW conservative group,  Americans for a Strong Defence, financed by anonymous donors, is running advertisements urging Democratic senators in five states to vote against Chuck Hagel, President Barack Obama's nominee to be secretary of defence, saying he would make the US  ''a weaker country''. Another freshly minted and anonymously backed organisation, Use Your Mandate, which presents itself as a liberal gay rights group but buys  its television time through a  Republican firm, is attacking Mr Hagel as anti-gay, anti-woman and anti-Israel in ads and mail-outs. Those groups are joining at least five others organising  to stop Mr Hagel's confirmation, a goal even they acknowledge appears to be increasingly challenging. But the effort comes with a built-in consolation prize should it fail: depleting some of President Obama's political capital as he embarks on a new term with fresh momentum. The media campaign to scuttle Mr Hagel's appointment reflects the  Supreme Court's 2010 Citizens United decision, which loosened campaign finance restrictions. Advertisement The biggest  individual anti-Obama financier, Sheldon Adelson, is so invested in the fight over Mr Hagel he has  directly  urged Republican senators to hold the line against his confirmation, which is  almost impossible to stop with six Republican ''yes'' votes and a unified Democratic caucus. But another major Republican donor, Foster Friess, had opted out but    hoped they could find a better person to serve in that position.NEW YORK  TIMES "
-text3 = u"Enlarge Image CARACAS, Venezuela — Dozens of people have been killed in clashes between inmates and national guard soldiers at a Venezuelan prison, local media accounts said yesterday. It was the latest in a series of bloody riots during the past year in overcrowded Venezuelan prisons, where guns and drugs abound and inmates control many aspects of prison life. Newspapers reported that more than 60 people, mostly prisoners, had been killed at the Uribana prison in Barquisimeto, citing the director of a hospital where the wounded and the dead were taken. More than 120 people had been injured, the reports said. The minister of prisons, Iris Varela, said the violence broke out Friday when troops entered the prison to search for weapons and establish order. The situation remained chaotic yesterday. The episode represented a new test for the government as President Hugo Chavez remains  in Cuba, where he has been undergoing treatment for cancer."
+url = "http://www.brisbanetimes.com.au/opinion/politics/funding-feud-is-sickening-20130127-2der5.html"
+text = Extractor(extractor='ArticleExtractor', url=url).getText()
 feat = [(u'inaugur', 759.111934374173), (u'samsung', 742.9592678100264), (u'economi', 674.6919703923397),
         (u'troop', 578.7942393535565), (u'film', 572.9974349081139), (u'flu', 531.0598212239286),
         (u'tablet', 530.685191292876), (u'devic', 522.7249134234829), (u'committe', 515.8068272029637),
@@ -1017,22 +1016,22 @@ feat = [(u'inaugur', 759.111934374173), (u'samsung', 742.9592678100264), (u'econ
         (u'sniper', 11.743651233260564), (u'withdrawn', 11.743651233260564), (u'bass', 11.732666950233943),
         (u'pastor', 11.732666950233943), (u'absurd', 11.732666950233943)]
 
-tokens = tokenize(text3)
+tokens = tokenize(text)
 #logger.info(tokens)
-res = [f[0] for f in feat if f[0] in tokens]
-logger.info(', '.join(res))
+res = [(f[0] ) for f in feat if f[0] in tokens]
+logger.info("\n" + '\n'.join(res))
 
-urls = [u"http://www.dispatch.com/content/stories/national_world/2013/01/27/dozens-killed-in-venezuelan-prison-clashes.html",
-       u"http://www.dailyrecord.co.uk/news/scottish-news/police-launch-month-long-festive-crackdown-1470502",
-       u"http://www.independent.co.uk/voices/faith/pope-condemns-critics-over-abuse-scandal-gossip-1929763.html",
-       u"http://www.tgdaily.com/software-features/67821-election-iphone-5-and-kim-kardashian-top-yahoo-searches"]
+#urls = [u"http://www.dispatch.com/content/stories/national_world/2013/01/27/dozens-killed-in-venezuelan-prison-clashes.html",
+#       u"http://www.dailyrecord.co.uk/news/scottish-news/police-launch-month-long-festive-crackdown-1470502",
+#       u"http://www.independent.co.uk/voices/faith/pope-condemns-critics-over-abuse-scandal-gossip-1929763.html",
+#       u"http://www.tgdaily.com/software-features/67821-election-iphone-5-and-kim-kardashian-top-yahoo-searches"]
 
-for url in urls:
-    e1 = Extractor(extractor='ArticleExtractor', url=url)
-    e2 = Extractor(extractor='LargestContentExtractor', url=url)
-    logger.info(u"#" * 10 + url + u"#" * 10)
-    logger.info(u">> 1 << : " + e1.getText() + u"\n")
-    logger.info(u">> 2 << : " + e2.getText() + u"\n")
+#for url in urls:
+#    e1 = Extractor(extractor='ArticleExtractor', url=url)
+#    e2 = Extractor(extractor='LargestContentExtractor', url=url)
+#    logger.info(u"#" * 10 + url + u"#" * 10)
+#    logger.info(u">> 1 << : " + e1.getText() + u"\n")
+#    logger.info(u">> 2 << : " + e2.getText() + u"\n")
 
 
 

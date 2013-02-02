@@ -1,4 +1,5 @@
 # -*- coding: utf-8 *-*
+import logging
 from boilerpipe.extract import Extractor
 from BeautifulSoup import BeautifulSoup
 from logger import logger
@@ -44,7 +45,7 @@ def longSubstr(data):
     return substr
 
 def longSubstrPair(data):
-    #logger.info(u"Data: " + u'\n-'.join([txt + "//" + type for txt, type in data]))
+    logger.debug(u"Data: " + u'\n-'.join([txt + "//" + type for txt, type in data]))
     results = []
     for elem1 in data:
         for elem2 in data:
@@ -54,7 +55,7 @@ def longSubstrPair(data):
                 if len(substr) > 10:
                     results.append(substr)
     results = sorted(results, key = lambda x: len(x), reverse=True)
-    #logger.info(u"Results: " + u'\n-'.join(results))
+    logger.debug(u"Results: " + u'\n-'.join(results))
     return results[0] if len(results) > 0 else ""
 
 def __fixChars(text):
@@ -70,14 +71,17 @@ def fetchTitle(html, titles = None):
     defaultTitle = ""
     ogMetaTitle = bs.find("meta", {"property": "og:title"})
 
-    if ogMetaTitle:
-        tagContent = __fixChars(ogMetaTitle["content"])
+    metaTitleText = __fixChars(u''.join(metaTitle.findAll(text=True))) if metaTitle else None
+    ogMetaTitleText = __fixChars(ogMetaTitle["content"]) if ogMetaTitle else None
+
+    if ogMetaTitleText and ogMetaTitleText != metaTitleText:
+        tagContent = ogMetaTitleText
         return tagContent
-    elif metaTitle:
+    elif metaTitleText:
         tagContent = __fixChars(u''.join(metaTitle.findAll(text=True)))
         defaultTitle = tagContent
         titles.append((defaultTitle, "meta"))
-    #logger.info(u"Default title: " + unicode(defaultTitle))
+    logger.debug(u"Default title: " + unicode(defaultTitle))
     heads = []
     for i in [1, 2, 3, 4, 5]:
         tagsH =bs.findAll("h" + str(i))
@@ -86,9 +90,9 @@ def fetchTitle(html, titles = None):
             if len(tagContent) < 250:
                 titles.append((tagContent, "h"))
                 heads.append(tagContent)
-    #logger.info(u"Titles: " + unicode(titles))
+    logger.debug(u"Titles: " + unicode(titles))
     longestSubstring = longSubstrPair(titles)
-    #logger.info(u"Longest substring: " + unicode(longestSubstring))
+    logger.debug(u"Longest substring: " + unicode(longestSubstring))
     longestSubstring = longestSubstring or defaultTitle
     title = longestSubstring
     title = __findHeader(heads, title)
@@ -158,10 +162,14 @@ if __name__ == "__main__":
     #    u"http://www.villagevoice.com/2012-04-18/news/Mitt-Romney-american-parasite/")
     #__test(u"CSR Racing", "https://itunes.apple.com/app/id469369175?mt=8")
     #__test(u"Romney's Convention Speech Destroyed: How Low Will He Go?", "http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/")
+
+    #__test(u"", u"http://www.uber-facts.com/2013/01/brown-eyes-seem-more-trustworthy/")
+    __test(u"Justin Bieber Previews Believe Acoustic: Watch Now!", u"http://www.mtv.com/news/articles/1700813/justin-bieber-believe-acoustic-preview.jhtml")
     __test(u"Funny as Hell – Kodi Me’chele Interview", u"http://www.playasonly.com/funny-as-hell-kodi-me%E2%80%99chele-interview/")
     __test(u"Apple Has Quietly Started Tracking iPhone Users Again, And It's Tricky To Opt Out", u"http://www.businessinsider.com/ifa-apples-iphone-tracking-in-ios-6-2012-10?op=1")
     __test(u"U-KISS’ Dongho to show his comedic side on ‘SNL Korea’", "http://www.allkpop.com/2012/10/u-kiss-dongho-to-show-his-comedic-side-on-snl-korea")
     __test(u"", u"")
+
     __test(u"Adsense vs Amazon Associates vs iHerb vs Tradedoubler (review)", u"http://pusabase.com/blog/2012/03/05/adsense-vs-amazon-associates-vs-iherb-vs-tradedoubler-review/")
     __test(u"", "http://thestar.blogs.com/thespin/2012/10/not-deja-vu-all-over-again.html")
     __test(u"", "http://www.france24.com/en/20121012-mars-rover-makes-surprising-rock-find?utm_source=dlvr.it&utm_medium=twitter")

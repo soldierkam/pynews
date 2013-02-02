@@ -60,6 +60,7 @@ class TweetE(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=False)
     inReplyToId = Column(BigInteger, nullable=True)
     retweets = Column(Integer, nullable=False)
+    retweetedId = Column(BigInteger, nullable=True)
     text = Column(String(300), nullable=False)
     createdAt = Column(DateTime(timezone=True), nullable=False)
     user_id = Column(BigInteger, ForeignKey('users.id'))
@@ -69,6 +70,7 @@ class TweetE(Base):
         v = {}
         v["id"] = self.id
         v["inReplyToId"] = self.inReplyToId
+        v["retweetedId"] = self.retweetedId
         v["retweets"] = self.retweets
         v["text"] = self.text
         v["createdAt"] = self.createdAt
@@ -105,8 +107,17 @@ class UrlE(Base):
         v["cat"] = self.cat
         v["len"] = self.len
         v["lang"] = self.lang
-        v["tweets"] = [t.copy() for t in self.tweets]
+        v["tweets"] = [t.copy() for t in self.uniqueTweets()]
         return v
+
+    def uniqueTweets(self):
+        #res = list(self.tweets)
+        #for tw in self.tweets:
+        #    for otherTw in self.tweets:
+        #        if tw is not otherTw and tw.retweetedId == otherTw.retweetedId and tw.retweets < otherTw.retweets:
+        #            res.remove(tw)
+        #return res
+        return self.tweets
 
     def __eq__(self, other):
         if not isinstance(other, UrlE):
@@ -178,6 +189,7 @@ class SqlModel():
         tw.inReplyToId = t.inReplyToId()
         tw.createdAt = self.__parseDate(t.createdAt())
         tw.retweets = t.retweets()
+        tw.retweetedId = t.retweetedId()
         tw.text = t.text()
         userE.tweets.append(tw)
         return tw

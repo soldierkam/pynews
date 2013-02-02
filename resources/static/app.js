@@ -222,7 +222,7 @@ $jit.TM.Squarified.implement({
 
         $( box ).text( $( line ).text() );
 
-    };
+    }
 
     function refreshTreeMap(){
         buildTm();
@@ -235,7 +235,7 @@ $jit.TM.Squarified.implement({
         state.data = data;
         state.user = user;
         refreshTreeMap();
-    };
+    }
 
     function getValidCat(){
         var hash = window.location.hash.substring(1);
@@ -247,11 +247,11 @@ $jit.TM.Squarified.implement({
             return;
         }
         return cat;
-    };
+    }
 
     function findColor(cat){
         return type2color[cat] || "#DDDDDD";
-    };
+    }
 
     function createLead(node){
         if(!node.text){
@@ -263,6 +263,13 @@ $jit.TM.Squarified.implement({
         }else{
             t += '</div>';
         }
+        t+="<br>";
+        $(node.tweets).each(function(i, tweet){
+            var user = tweet.user;
+            t += '<div style="font-weight: bold"> ' + (i+1) + '. Retweets: ' + tweet.retweets + ' ' +
+                'Folowers: ' + user.followers + ' ' +
+                'Period: ' + user.period.toFixed(2) + 'h/tweet</div>';
+        });
         return t;
     };
 
@@ -277,14 +284,8 @@ $jit.TM.Squarified.implement({
         var tweets = node.tweets;
         var mark = 0;
         $(tweets).each(function(i, tweet){
-            var r;
-            if (tweet.retweets){
-                r = tweet.retweets * 0.5
-            }else{
-                r = 0.1
-            }
-            mark += r * 100 * tweet.user.followers * tweet.user.period;
-        })
+            mark += (tweet.retweets * 0.5 + 0.1) * tweet.user.followers * tweet.user.period;
+        });
         return mark;
     };
 
@@ -394,9 +395,9 @@ $jit.TM.Squarified.implement({
         };
     }
 
-    function buildNode(cat){
+    function buildNode(cat, nodes){
         state.i += 1;
-        var name = findLabel(cat);
+        var name = findLabel(cat) + ' (' + nodes.length + ')';
         return {
             children: [],
             data:{
@@ -430,7 +431,7 @@ $jit.TM.Squarified.implement({
         });
 
         $(cats).each(function(i, cat){
-            var catNode = buildNode(cat);
+            var catNode = buildNode(cat, cat2Nodes[cat]);
             catNode.children = cat2Nodes[cat];
             cat2Root[cat] = catNode;
         });
@@ -439,7 +440,7 @@ $jit.TM.Squarified.implement({
         if(cats.length == 1){
             root = cat2Root[cats[0]];
         }else if (cats.length > 1){
-            root = buildNode("all");
+            root = buildNode("all", urlList);
             $(cats).each(function(i, cat){
                 root.children.push(cat2Root[cat]);
             });
@@ -473,7 +474,7 @@ $jit.TM.Squarified.implement({
             var parentArea = root.data["$area"];
             var thisArea = child.data["$area"];
             var ratio = thisArea / parentArea;
-            if( ratio < 0.0005){
+            if( ratio < 0.0001){
                 log("Ignore " + child.data.href + ": " + ratio)
                 log(child.data.tweets)
                 toDelete = toDelete.concat(child)

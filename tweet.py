@@ -5,10 +5,10 @@ from url import UrlException
 
 class TweetText:
 
-    def __init__(self, t, urlBuilder, userBuilder, d):
-        self.__d = d
+    def __init__(self, t, urlBuilder, userBuilder, retweetedId):
         self.__id = t["id"]
         self.__inReplyToId = t["in_reply_to_status_id"]
+        self.__retweetedId = retweetedId
         self.__retweets = t["retweet_count"]
         self.__text = t["text"]
         self.__coordinates = t["coordinates"]["coordinates"] if t["coordinates"] is not None and "coordinates" in t["coordinates"] else None
@@ -47,6 +47,7 @@ class TweetText:
         values = {}
         values["id"] = self.__id
         values["inReplyToId"] = self.__inReplyToId
+        values["retweetedId"] = self.__retweetedId
         values["text"] = self.__text
         values["time"] = self.__createdAt
         values["retweets"] = self.__retweets
@@ -72,6 +73,9 @@ class TweetText:
     def inReplyToId(self):
         return self.__inReplyToId
 
+    def retweetedId(self):
+        return self.__retweetedId
+
     def isResolved(self):
         tweetResolved = True
         for url in self.urls():
@@ -80,4 +84,4 @@ class TweetText:
         return tweetResolved
 
     def __str__(self):
-        return u"{TW:" + self.__d + u" " + unicode(self.__text) + u"(" + unicode(self.__id) + u")}"
+        return u"{TW: " + unicode(self.__text) + u" " + unicode(self.__id) + u"}"
