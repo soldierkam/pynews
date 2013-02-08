@@ -34,6 +34,29 @@ def features(text):
     semicolonCount = text.count(",")
     return array([sentencesCount, wordsCount, quoteCount, semicolonCount])
 
+def avgFun(a):
+    return a[0] / a[1]
+
+
+def calcDiv(vectors):
+    sumV = [0,0,0,0]
+    maxV = [0,0,0,0]
+    minV = [10000, 10000, 10000, 10000]
+    for v in vectors:
+        sumV = map(sum, zip(sumV, v))
+        minV = map(min, zip(minV, v))
+        maxV = map(max, zip(maxV, v))
+    avgV = map(avgFun, zip(sumV, [len(vectors)] * 4))
+    logger.info(u"Avg: " + unicode(avgV) + u" Min: " + unicode(minV) + u" Max: " + unicode(maxV))
+    return array(maxV)
+
+#def normalize(toNormalize, maxV):
+#    if not isinstance(toNormalize, list):
+#        return toNormalize / maxV
+#    newVectors = []
+#    for v in toNormalize:
+#        newVectors.append( v / maxV)
+#    return newVectors
 
 
 class DocumentSizeClustering():
@@ -44,7 +67,10 @@ class DocumentSizeClustering():
         data = shelve.open(filename, protocol=-1, flag="r")
         langDetect = LangDetect.instance()
         vectors = [features(item["text"]) for digest, item in data.items() if item["text"] and item["text"] != "ERROR" and langDetect.detect(item["text"]) is "en"]
-        self.__clusterer = cluster.KMeansClusterer(3, euclidean_distance, initial_means=[[10,40,0,1],[30,340,2,30],[120,1500,15,50]])
+        self.__maxV = calcDiv(vectors)
+        #vectors = normalize(vectors, self.__maxV)
+        means = [array([10, 40, 0, 1]), array([30, 340, 2, 30]), array([120, 1500, 15, 50])]
+        self.__clusterer = cluster.KMeansClusterer(3, euclidean_distance, initial_means=means, avoid_empty_clusters=True)
         self.__clusterer.cluster(vectors)
         klassIdToSize = {"0": 0, "1": 0, "2": 0}
         klassIdToWordsCount = {"0": 0, "1": 0, "2": 0}
@@ -52,6 +78,7 @@ class DocumentSizeClustering():
             text = item["text"]
             if text and text != "ERROR":
                 feat = features(text)
+                #feat = normalize(feat, self.__maxV)
                 klass = str(self.__clusterer.classify(feat))
                 klassIdToSize[klass] += 1
                 klassIdToWordsCount[klass] += len(text.split())
@@ -67,7 +94,9 @@ class DocumentSizeClustering():
     def classify(self, document):
         try:
             self.__mutex.acquire()
-            docClass = self.__clusterer.classify(features(document))
+            feat = features(document)
+            #feat = normalize(feat, self.__maxV)
+            docClass = self.__clusterer.classify(feat)
             return self.__klassIdToLabel[str(docClass)]
         finally:
             self.__mutex.release()

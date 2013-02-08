@@ -164,6 +164,7 @@ if __name__ == "__main__":
     #__test(u"Romney's Convention Speech Destroyed: How Low Will He Go?", "http://explorer9360.xanga.com/767664210/romneys-convention-speech-destroyed-how-low-will-he-go/")
 
     #__test(u"", u"http://www.uber-facts.com/2013/01/brown-eyes-seem-more-trustworthy/")
+    __test(u"Toyota No. 1 again with nearly 9.75M sales in 2012", u"http://bigstory.ap.org/article/toyota-sold-nearly-975-million-vehicles-last-year#overlay-context=article/white-wins-6th-straight-winter-x-superpipe-title")
     __test(u"Justin Bieber Previews Believe Acoustic: Watch Now!", u"http://www.mtv.com/news/articles/1700813/justin-bieber-believe-acoustic-preview.jhtml")
     __test(u"Funny as Hell – Kodi Me’chele Interview", u"http://www.playasonly.com/funny-as-hell-kodi-me%E2%80%99chele-interview/")
     __test(u"Apple Has Quietly Started Tracking iPhone Users Again, And It's Tricky To Opt Out", u"http://www.businessinsider.com/ifa-apples-iphone-tracking-in-ios-6-2012-10?op=1")

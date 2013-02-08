@@ -284,7 +284,7 @@ $jit.TM.Squarified.implement({
         var tweets = node.tweets;
         var mark = 0;
         $(tweets).each(function(i, tweet){
-            mark += (tweet.retweets * 0.5 + 0.1) * tweet.user.followers * tweet.user.period;
+            mark += tweet.retweets * Math.log(1 + tweet.user.followers) + 0.001 * tweet.user.followers * tweet.user.period;
         });
         return mark;
     };
@@ -430,10 +430,28 @@ $jit.TM.Squarified.implement({
             cat2Nodes[cat].push(node);
         });
 
+        function printNum(v) {
+            var str = v + '';
+            str = str.replace(",", "").replace(".", ",");
+            return str;
+        }
+
         $(cats).each(function(i, cat){
-            var catNode = buildNode(cat, cat2Nodes[cat]);
+            var catNode = buildNode(cat, cat2Nodes[cat]),
+                msgDesc = "";
             catNode.children = cat2Nodes[cat];
             cat2Root[cat] = catNode;
+
+            $(catNode.children).each(function(i, elem){
+                var retweets = 0, followers = 0, period=0;
+                $(elem.data.tweets).each(function(i, tweet){
+                    retweets = Math.max(tweet.retweets, retweets);
+                    followers = Math.max(tweet.user.followers, followers);
+                    period = Math.max(tweet.user.period, period);
+                });
+                msgDesc += "\"" + elem.name + "\"\t\"" + printNum(elem.data.$area) + "\"\t\"" + retweets + "\"\t\"" + followers + "\"\t\"" + printNum(period) + "\"\t\n";
+            });
+            console.log(msgDesc);
         });
 
         var root;
@@ -455,8 +473,7 @@ $jit.TM.Squarified.implement({
     function sumChildren(ch, user){
         var sum = 0;
         $(ch).each(function(i, c){
-            var factor = userCtxFactor(user, c.data.c);
-            c.data["$area"] *= factor;
+            c.data["$area"] *= userCtxFactor(user, c.data.c);
             c.data["$area"] += sumChildren(c.children, user);
             sum += c.data["$area"];
         });
@@ -498,7 +515,7 @@ $jit.TM.Squarified.implement({
             screenName: state.screenName
           },
           success: function( json ) {
-              var treemapData = prepareData(json.data, json.user)
+              var treemapData = prepareData(json.data, json.user);
               if(json.user){
                 updateTooltip(json.user.proc, json.user.phase);
               }
