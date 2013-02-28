@@ -3,8 +3,6 @@ import cPickle
 from twisted.test.test_sslverify import counter
 from logger import logger
 
-__author__ = 'soldier'
-
 import sqlite3
 
 def _read(p):

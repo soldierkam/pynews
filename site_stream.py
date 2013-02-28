@@ -1,5 +1,3 @@
-__author__ = 'soldier'
-
 from tweetstream.streamclasses import BaseStream
 
 class SiteStream(BaseStream):

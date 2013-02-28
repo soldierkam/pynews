@@ -1,8 +1,6 @@
 # -*- coding: utf-8 *-*
 import shelve
 
-__author__ = 'soldier'
-
 import sys
 import tweetstream
 import struct

@@ -1,5 +1,3 @@
-#learn XOR with a nerual network with saving of the learned paramaters
-
 import pybrain
 from pybrain.datasets import *
 from pybrain.tools.shortcuts import buildNetwork
@@ -15,9 +13,6 @@ from logger import logger
 from nltk import NaiveBayesClassifier, ConfusionMatrix
 import random, nltk
 import numpy as np
-
-__author__ = 'soldier'
-
 import os
 
 newsCorpus = LazyCorpusLoader('news_corpus', CategorizedPlaintextCorpusReader, '(data).*', cat_file='cats.txt')

@@ -18,8 +18,6 @@ from inliner import Downloader as PageDownloader
 from tools import StoppableThread
 from logger import logger
 
-__author__ = 'soldier'
-
 
 #w - specifies the world topic
 WORLD="w"

@@ -1,6 +1,3 @@
-__author__ = 'soldier'
-
-
 import re, os
 from nltk.stem.porter import PorterStemmer
 from nltk import FreqDist

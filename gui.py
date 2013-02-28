@@ -1,9 +1,6 @@
 # -*- coding: utf-8 *-*
 # import simplejson
 from logger import logger
-
-__author__ = 'soldier'
-
 from wx import grid
 from  wx.grid import Grid
 import wx, simplejson

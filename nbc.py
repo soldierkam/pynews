@@ -1,4 +1,3 @@
-__author__ = 'soldier'
 
 
 from nltk.corpus.reader.plaintext import CategorizedPlaintextCorpusReader
