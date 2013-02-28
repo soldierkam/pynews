@@ -295,7 +295,7 @@ class Model(StoppableThread):
 
 def main():
     socket.setdefaulttimeout(60)
-    mainDir="/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews"
+    mainDir="/run/media/soldier/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews"
     tweetsDir = os.path.join(mainDir, "stream", "tweets")
     logger.info("Start app")
     model = None

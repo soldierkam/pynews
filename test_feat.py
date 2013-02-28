@@ -10,7 +10,7 @@ from tools import RssDataReader
 #for dir in dirs:
 #    RssDataReader(dir)
 
-url = "http://www.brisbanetimes.com.au/opinion/politics/funding-feud-is-sickening-20130127-2der5.html"
+url = "http://www.uber-facts.com/2013/01/brown-eyes-seem-more-trustworthy/"
 text = Extractor(extractor='ArticleExtractor', url=url).getText()
 feat = [(u'inaugur', 759.111934374173), (u'samsung', 742.9592678100264), (u'economi', 674.6919703923397),
         (u'troop', 578.7942393535565), (u'film', 572.9974349081139), (u'flu', 531.0598212239286),

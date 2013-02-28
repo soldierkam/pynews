@@ -61,7 +61,7 @@ def calcDiv(vectors):
 
 class DocumentSizeClustering():
 
-    def __init__(self, filename = "/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db"):
+    def __init__(self, filename = "/run/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db"):
         logger.info("Start building " + self.__class__.__name__)
         self.__mutex = threading.Semaphore()
         data = shelve.open(filename, protocol=-1, flag="r")
@@ -104,7 +104,7 @@ class DocumentSizeClustering():
 if __name__ == "__main__":
     c = DocumentSizeClustering()
     langDetect = LangDetect.instance()
-    data = shelve.open("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db", protocol=-1, flag="r")
+    data = shelve.open("/run/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db", protocol=-1, flag="r")
     print "Documents: " + str(len(data))
     position = 0
     labels = {"short": 0, "medium": 0, "long": 0}

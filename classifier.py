@@ -11,22 +11,22 @@ class TxtClassificatorWrapper():
     _instance = None
     _mutex = threading.Semaphore()
 
-    def __init__(self):
+    def __init__(self, dirname):
         if "fake_run" in os.environ:
             self.__i = 0
             return
-        self.__documentSizeClassificator = DocumentSizeClustering("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/clusteringData.db")
-        self.__newsClassificator = NewsClassificator("/media/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/googlenews/", doTest=False, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])
+        self.__documentSizeClassificator = DocumentSizeClustering(os.path.join(dirname, "clusteringData.db"))
+        self.__newsClassificator = NewsClassificator(os.path.join(dirname, "googlenews"), doTest=False, ignoreKlass = [HEADLINES, SPOTLIGHT, NATION])
 
 
     @staticmethod
-    def instance():
+    def instance(dirname=None):
         if TxtClassificatorWrapper._instance is not None:
             return TxtClassificatorWrapper._instance
         try:
             TxtClassificatorWrapper._mutex.acquire()
             if TxtClassificatorWrapper._instance is None:
-                TxtClassificatorWrapper._instance = TxtClassificatorWrapper()
+                TxtClassificatorWrapper._instance = TxtClassificatorWrapper(dirname)
             return TxtClassificatorWrapper._instance
         finally:
             TxtClassificatorWrapper._mutex.release()
@@ -55,7 +55,7 @@ class TxtClassificatorWrapper():
 class Init(StoppableThread):
 
     def runPart(self):
-        i = TxtClassificatorWrapper.instance()
+        i = TxtClassificatorWrapper.instance("/run/media/soldier/eea1ee1d-e5c4-4534-9e0b-24308315e271/pynews/stream/")
         raise NothingToDo()
 
     def atEnd(self):
